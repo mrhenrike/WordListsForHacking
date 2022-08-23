@@ -5,7 +5,6 @@ Compiled list of words tested and used in everyday life, to meet the need for a 
 |Title|Description|
 |----|--|
 | wlist_brasil.lst | Brazilian words based on my experience (music, musicians, bands, famous people, artists, tv shows, food and churches) |
-| rockyou_uniaogeek.lst | A list of words compiled from the famous "rockyou" word list and updated frequently |
 | usernames_br.lst  | Most popular usernames from Brazil |
 
 - - -
