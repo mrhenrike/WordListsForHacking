@@ -6,6 +6,8 @@ Compiled list of words tested and used in everyday life, to meet the need for a 
 |----|--|
 | wlist_brasil.lst | Brazilian words based on my experience (music, musicians, bands, famous people, artists, tv shows, food and churches) |
 | usernames_br.lst  | Most popular usernames from Brazil |
+| labs_passwords.lst  | Most common passwords that I use in my class and events |
+
 
 - - -
 ## Wordlists from SecLists
