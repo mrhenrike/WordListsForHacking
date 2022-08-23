@@ -1,23 +1,94 @@
 # WordListsForHacking
 Compiled list of words tested and used in everyday life, to meet the need for a list for Pentesters focused on common words from real environments in Brazil and other clients in the world.
++ This list of words was created 4 years ago and is being updated whenever possible.
 
-This list of words was created 4 years ago and is being updated whenever possible.
-
-|Qtd|Description|
+|Title|Description|
 |----|--|
-|7.777| Words|
-| 5.566 |Cities|
-| 1.993  | Most popular male names. |
-| 1.400 |  Most popular female names. |
-| 928 |  Music Bands |
-| 677  | Soccer Teams |
-| 43  | Most used passwords in Brazil |
-|146.645 | Numbers |
+| wlist_brasil.lst | Brazilian words based on my experience|
+| rockyou_custom.lst | A compiled words from the famous wordlist "rockyou" |
+| ctfs_brazil.txt  | Most popular words on CTFs from Brazil |
 
-Total:165.029
+- - -
+## Wordlists from SecLists
++ SecLists is the security tester's companion
+
+**Zip**
+```
+wget -c https://github.com/danielmiessler/SecLists/archive/master.zip -O SecList.zip \
+  && unzip SecList.zip \
+  && rm -f SecList.zip
+```
+
+**Git (Small)**
+```
+git clone --depth 1 \
+  https://github.com/danielmiessler/SecLists.git
+```
+
+**Git (Complete)**
+```
+git clone https://github.com/danielmiessler/SecLists.git
+```
+
+**Kali Linux** ([Tool Page](https://www.kali.org/tools/seclists/))
+```
+$sudo apt -y install seclists
+
+After the installation, you can locate this wordlist in:
+/usr/share/seclists
+```
+- - -
+
+## Others Wordslist
+**OpenOffice Dictionary (various world languages)**
+```
+Debian-based, Ubuntu, Kali Linux:
+$ sudo apt install wbrazilian -y
+
+For other languages choice the packet:
+wgerman-medical
+wesperanto
+wcanadian-small
+wcanadian-large
+wcanadian-insane
+wcanadian-huge
+wcanadian
+wbritish-small
+wbritish-large
+wbritish-insane
+wbritish-huge
+wamerican-small
+wamerican-large
+wamerican-insane
+wamerican-huge
+wukrainian
+wswiss
+wswedish
+wspanish
+wportuguese
+wpolish
+wogerman
+wnorwegian
+wngerman
+witalian
+wgalician-minimos
+wfrench
+wfaroese
+wdutch
+wdanish
+wcatalan
+wbulgarian
+wbritish
+wbrazilian
+wamerican
+miscfiles
+
+After the installation, you can locate this wordlist in:
+/usr/share/dict/
+```
 
 ### Compiled from:
-+ [Personal and hands-on experience with clients in Brazil]
++ **Personal and hands-on experience with clients in Brazil**
 + [BRDumps/wordlists](https://github.com/BRDumps/wordlists)
 + [sysevil/Brazilian-wordlist](https://github.com/sysevil/Brazilian-wordlist)
 + [cyb3rp4c3/brazilian-wordlists](https://github.com/cyb3rp4c3/brazilian-wordlists)
