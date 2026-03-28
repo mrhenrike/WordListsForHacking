@@ -96,3 +96,23 @@ After the installation, you can locate this wordlist in:
 + [cyb3rp4c3/brazilian-wordlists](https://github.com/cyb3rp4c3/brazilian-wordlists)
 + [Mr-P4p3r/wordlist-br](https://github.com/Mr-P4p3r/wordlist-br)
 + [mmatje/br-wordlist](https://github.com/mmatje/br-wordlist)
+
+---
+
+## License
+
+This project is released under the **MIT License** — see [LICENSE](LICENSE).
+
+Previously the repository used **GNU GPLv3**; as the sole rights holder, the license was **relicensed to MIT** to simplify reuse, forks, and contributions while still requiring **preservation of copyright notices** in distributions.
+
+---
+
+<!-- LEGAL-NOTICE-UG-MRH -->
+
+## Aviso legal / legal notice
+
+- **Uso** — Listas para pesquisa, educação e testes **autorizados** (ex.: pentest com contrato). Não utilize para acesso não autorizado ou violação de lei.
+- **Sem garantia** — Conteúdo **AS IS**; sem garantias de exaustividade, correção ou adequação a qualquer fim.
+- **Responsabilidade** — O autor **não responde** por danos, uso indevido ou reclamações de terceiros; **uso por sua conta e risco**.
+- **Atribuição** — Mantenha os avisos de copyright e referência a este repositório ao redistribuir. Contribuições via **pull request** são bem-vindas.
+- **Conteúdo de terceiros** — Referências a [SecLists](https://github.com/danielmiessler/SecLists) e outras fontes mantêm as **licenças originais** desses projetos quando você copiar material deles diretamente.
