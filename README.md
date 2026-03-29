@@ -1,5 +1,7 @@
 # WordListsForHacking
 Compiled list of words tested and used in everyday life, to meet the need for a list for Pentesters focused on common words from real environments in Brazil and other clients in the world.
+
+**Portuguese (pt-BR):** [README.pt-BR.md](README.pt-BR.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
 + This list of words was created 4 years ago and is being updated whenever possible.
 
 |Title|Description|
