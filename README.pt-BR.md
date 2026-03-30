@@ -208,6 +208,79 @@ e gere credenciais verdadeiramente aleatórias.**
 
 ---
 
+## Verifique se Sua Senha Está Nesta Lista
+
+Você pode verificar rapidamente se sua senha aparece em `wlist_brasil.lst` usando
+ferramentas nativas do sistema — **sem precisar instalar nada**.
+
+> ⚠️ Faça essa verificação **offline**, após baixar o arquivo localmente.
+> Nunca digite sua senha real em um formulário online nem a transmita pela rede.
+
+### Passo 1 — Baixar o arquivo
+
+```bash
+# Linux / macOS
+wget https://raw.githubusercontent.com/mrhenrike/WordListsForHacking/main/wlist_brasil.lst
+# ou
+curl -O https://raw.githubusercontent.com/mrhenrike/WordListsForHacking/main/wlist_brasil.lst
+```
+
+```powershell
+# Windows PowerShell
+Invoke-WebRequest `
+  -Uri "https://raw.githubusercontent.com/mrhenrike/WordListsForHacking/main/wlist_brasil.lst" `
+  -OutFile "wlist_brasil.lst"
+```
+
+### Passo 2 — Buscar sua senha
+
+Substitua `suasenha` pela senha que deseja verificar.
+
+```bash
+# Linux / macOS — correspondência exata, diferencia maiúsculas/minúsculas
+grep -Fx "suasenha" wlist_brasil.lst \
+  && echo "⚠️  ENCONTRADA — MUDE SUA SENHA IMEDIATAMENTE" \
+  || echo "✓  Não encontrada nesta lista"
+```
+
+```bash
+# Linux / macOS — sem diferenciar maiúsculas (captura variantes leet também)
+grep -Fix "suasenha" wlist_brasil.lst \
+  && echo "⚠️  ENCONTRADA — MUDE SUA SENHA IMEDIATAMENTE" \
+  || echo "✓  Não encontrada nesta lista"
+```
+
+```powershell
+# Windows PowerShell — correspondência exata
+$result = Select-String -Path "wlist_brasil.lst" -Pattern "^suasenha$" -CaseSensitive
+if ($result) { Write-Host "⚠️  ENCONTRADA — MUDE SUA SENHA IMEDIATAMENTE" -ForegroundColor Red }
+else          { Write-Host "✓  Não encontrada nesta lista" -ForegroundColor Green }
+```
+
+```cmd
+:: Windows CMD — correspondência exata
+findstr /x /c:"suasenha" wlist_brasil.lst
+:: Se aparecer alguma saída: sua senha foi encontrada. Mude-a imediatamente.
+```
+
+### Passo 3 — O que fazer se sua senha for encontrada
+
+1. **Mude imediatamente** em todos os serviços onde a utiliza
+2. **Nunca reutilize senhas** — cada conta deve ter uma credencial única
+3. **Use um gerenciador de senhas**: [Bitwarden](https://bitwarden.com) (gratuito/open-source),
+   KeePass, 1Password ou o cofre nativo do seu sistema
+4. **Gere senhas verdadeiramente aleatórias** — evite: nomes, datas, sequências de
+   teclado, nomes de empresas, times de futebol, letras de músicas ou variações
+   leet de palavras do dicionário
+5. **Ative MFA/2FA** em todas as contas que oferecem esse recurso
+
+> **Importante:** se sua senha for encontrada aqui, isso **não** significa que ela
+> foi extraída de um vazamento, vault ou sistema PAM específico. Significa que ela
+> segue um **padrão previsível** que esta wordlist foi construída para detectar —
+> e que qualquer atacante motivado tentaria primeiro. Encare isso como um alerta.
+
+---
+
 ## Aviso Legal
 
 - Use apenas em ambientes com **autorização escrita explícita**

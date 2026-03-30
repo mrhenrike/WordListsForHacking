@@ -204,6 +204,78 @@ and generate truly random credentials.**
 
 ---
 
+## Check If Your Password Is in This List
+
+You can quickly verify whether your password appears in `wlist_brasil.lst` using
+built-in tools — **no extra software required**.
+
+> ⚠️ Run this check **offline**, after downloading the file locally.
+> Never type your real password into an online form or transmit it over a network.
+
+### Step 1 — Download the file
+
+```bash
+# Linux / macOS
+wget https://raw.githubusercontent.com/mrhenrike/WordListsForHacking/main/wlist_brasil.lst
+# or
+curl -O https://raw.githubusercontent.com/mrhenrike/WordListsForHacking/main/wlist_brasil.lst
+```
+
+```powershell
+# Windows PowerShell
+Invoke-WebRequest `
+  -Uri "https://raw.githubusercontent.com/mrhenrike/WordListsForHacking/main/wlist_brasil.lst" `
+  -OutFile "wlist_brasil.lst"
+```
+
+### Step 2 — Search for your password
+
+Replace `yourpassword` with the password you want to check.
+
+```bash
+# Linux / macOS — exact match, case-sensitive
+grep -Fx "yourpassword" wlist_brasil.lst \
+  && echo "⚠️  FOUND — CHANGE YOUR PASSWORD NOW" \
+  || echo "✓  Not found in this list"
+```
+
+```bash
+# Linux / macOS — case-insensitive (catches leet-speak variants too)
+grep -Fix "yourpassword" wlist_brasil.lst \
+  && echo "⚠️  FOUND — CHANGE YOUR PASSWORD NOW" \
+  || echo "✓  Not found in this list"
+```
+
+```powershell
+# Windows PowerShell — exact match
+$result = Select-String -Path "wlist_brasil.lst" -Pattern "^yourpassword$" -CaseSensitive
+if ($result) { Write-Host "⚠️  FOUND — CHANGE YOUR PASSWORD NOW" -ForegroundColor Red }
+else          { Write-Host "✓  Not found in this list" -ForegroundColor Green }
+```
+
+```cmd
+:: Windows CMD — exact match
+findstr /x /c:"yourpassword" wlist_brasil.lst
+:: If output appears: your password was found. Change it immediately.
+```
+
+### Step 3 — What to do if your password is found
+
+1. **Change it immediately** in every service where you use it
+2. **Never reuse passwords** — each account must have a unique credential
+3. **Use a password manager**: [Bitwarden](https://bitwarden.com) (free/open-source),
+   KeePass, 1Password, or your OS built-in vault
+4. **Generate truly random passwords** — avoid: names, dates, keyboard walks,
+   company names, football teams, song lyrics, or leet-speak of dictionary words
+5. **Enable MFA/2FA** on every account that supports it
+
+> **Important:** if your password is found here, it does **not** mean it was
+> extracted from a specific breach, vault, or PAM system. It means your password
+> follows a **predictable pattern** that this wordlist was built to detect — and
+> that any motivated attacker would try first. Treat it as a wake-up call.
+
+---
+
 ## Legal Notice
 
 - Use only in environments where you have **explicit written authorization**
