@@ -1,7 +1,7 @@
 """
 WordListsForHacking — Pipeline de atualização completo.
 
-Autor: André Henrique (@mrhenrike)
+Autor: André Henrique (@mrhenrike) | União Geek — https://github.com/Uniao-Geek
 Versão: 2.0.0
 Data: 2026-03-30
 
@@ -1244,7 +1244,7 @@ def write_handoff(stats: dict) -> None:
 
 1. Commit no submodule: `git add -A && git commit -m "feat: v2.0.0 — wordlists update"`
 2. Push: `git push origin main`
-3. Atualizar ponteiro no superprojeto (Projetos-SafeLabs)
+3. Atualizar ponteiro no superprojeto (Uniao-Geek/Projetos-SafeLabs)
 4. Criar release v2.0.0 no GitHub: `gh release create v2.0.0 --title "v2.0.0 — Major update"`
 """
     with handoff_path.open("w", encoding="utf-8") as f:
