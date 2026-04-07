@@ -83,7 +83,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "2.1.0"
+VERSION = "2.1.1"
 
 # ── Graceful shutdown ──────────────────────────────────────────────────────────
 _SHUTDOWN_REQUESTED = False
@@ -1299,7 +1299,7 @@ def build_parser() -> argparse.ArgumentParser:
   python wfh.py corp-users --domain empresa.com.br --file employees.txt -o users.lst
   python wfh.py corp-users --domain empresa.com.br --search "Empresa XPTO" --passwords -o combo.lst
   python wfh.py corp-users --domain empresa.com.br --names "João Silva,Maria Souza" --combo -o combo.lst
-  python wfh.py corp-users --domain securonix.net --subdomain a1t3ngrt -o admins.lst
+  python wfh.py corp-users --domain acme.com --subdomain corp-ad -o admins.lst
   python wfh.py phone --country brazil --state SP --type mobile -o phones_sp.lst
   python wfh.py phone --country usa --state NY --formats e164,local -o phones_ny.lst
   python wfh.py phone --ddi 55 --ddd 11 --pattern "9XXXX-XXXX" -o custom.lst
@@ -1409,7 +1409,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_pt.add_argument("-t", "--template", help="Template (e.g. DS{cod}@rd.com.br)")
     p_pt.add_argument("-f", "--template-file", dest="template_file", help="Template file")
     p_pt.add_argument("--vars", nargs="+", metavar="KEY=VALUE",
-                       help="Variables (e.g. cod=1200-1300 company=Drogasil,Hapvida)")
+                       help="Variables (e.g. cod=1200-1300 company=Acme,Globex)")
     p_pt.add_argument("-o", "--output", help="Output file")
 
     # ── profile ───────────────────────────────────────────────────────────
@@ -1458,7 +1458,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  wfh.py corp-users --domain empresa.com.br --search 'Acme Corp'\n"
             "  wfh.py corp-users --domain empresa.com.br --names 'João Silva,Maria Souza'\n"
             "  wfh.py corp-users --domain empresa.com.br --file names.txt --combo -o combo.lst\n"
-            "  wfh.py corp-users --domain securonix.net --subdomain a1t3ngrt -o admins.lst\n"
+            "  wfh.py corp-users --domain acme.com --subdomain corp-ad -o admins.lst\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
