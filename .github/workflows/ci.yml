@@ -1,0 +1,140 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install flake8
+        run: pip install flake8
+
+      - name: Run flake8
+        run: |
+          flake8 wfh.py wfh_modules/ \
+            --max-line-length 120 \
+            --extend-ignore E501,W503
+
+  syntax-check:
+    name: Syntax check (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Compile all .py files
+        run: |
+          python -m py_compile wfh.py
+          for f in wfh_modules/*.py; do
+            echo "Compiling $f"
+            python -m py_compile "$f"
+          done
+
+  import-check:
+    name: Import check (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+
+      - name: Verify module imports
+        run: |
+          python -c "
+          import wfh_modules.domain_users
+          import wfh_modules.ml_patterns
+          import wfh_modules.pattern_engine
+          import wfh_modules.thread_pool
+          import wfh_modules.compute_backend
+          import wfh_modules.hw_profiler
+          import wfh_modules.corp_prefixes
+          import wfh_modules.linkedin_search
+          import wfh_modules.profiler
+          import wfh_modules.dns_wordlist
+          import wfh_modules.web_scraper
+          import wfh_modules.analyzer
+          import wfh_modules.charset_gen
+          import wfh_modules.corp_profiler
+          import wfh_modules.phone_gen
+          import wfh_modules.sanitizer
+          import wfh_modules.merger
+          import wfh_modules.xor_crypto
+          import wfh_modules.file_extractor
+          import wfh_modules.ocr_extractor
+          import wfh_modules.leet_permuter
+          import wfh_modules.mangler
+          print('All module imports OK')
+          "
+
+  version-check:
+    name: Version tag consistency
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Verify VERSION matches tag
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          VERSION=$(python -c "
+          import re, sys
+          with open('wfh.py') as f:
+              for line in f:
+                  m = re.search(r'v(\d+\.\d+\.\d+)', line)
+                  if m:
+                      print(m.group(1))
+                      sys.exit(0)
+          sys.exit(1)
+          ")
+          echo "Tag version:  $TAG"
+          echo "Code version: $VERSION"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "::error::Version mismatch — tag v$TAG != code v$VERSION"
+            exit 1
+          fi

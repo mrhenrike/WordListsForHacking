@@ -1,0 +1,76 @@
+# Security Policy
+
+## Supported Versions
+
+| Version | Supported          |
+|---------|--------------------|
+| 2.0.x   | :white_check_mark: |
+| 1.8.x   | :white_check_mark: |
+| < 1.8   | :x:                |
+
+## Reporting a Vulnerability
+
+If you discover a security vulnerability in this project, please report it
+responsibly. **Do not open a public GitHub issue.**
+
+### How to Report
+
+1. **Email:** Send a detailed report to **security@safelabs.com.br**
+2. **GitHub Security Advisory:** Use the
+   [Security Advisories](https://github.com/mrhenrike/WordListsForHacking/security/advisories)
+   tab to create a private report.
+
+### What to Include
+
+- Description of the vulnerability
+- Steps to reproduce
+- Potential impact
+- Suggested fix (if any)
+
+### Response Timeline
+
+| Action                | Target    |
+|-----------------------|-----------|
+| Acknowledgment        | 72 hours  |
+| Initial assessment    | 7 days    |
+| Fix or mitigation     | 30 days   |
+| Public disclosure     | After fix |
+
+## Scope
+
+The following are considered valid security concerns:
+
+- **Data leaks in generated output** — real PII, credentials, or company names
+  appearing in patterns, model files, or generated wordlists when they should
+  not be present.
+- **Hardcoded credentials** — API keys, tokens, or passwords left in source code
+  or configuration files.
+- **Injection in pattern engine** — template injection or code execution through
+  crafted input to `pattern`, `corp-users`, or other generation modules.
+- **ML model data exposure** — sensitive data leaking through the trained model
+  file (`.model/pattern_model.json`).
+- **Dependency vulnerabilities** — known CVEs in direct dependencies listed in
+  `requirements.txt`.
+
+## Out of Scope
+
+- **Misuse of generated wordlists** — this tool is designed for authorized
+  penetration testing, red team exercises, and security research. Unauthorized
+  use is the sole responsibility of the user.
+- **Brute-force effectiveness** — reports that generated wordlists can crack
+  passwords are expected behavior, not a vulnerability.
+- **Feature requests** — use GitHub Issues for feature requests.
+
+## Responsible Disclosure
+
+We follow coordinated disclosure practices:
+
+1. Reporter submits vulnerability privately.
+2. We acknowledge within 72 hours.
+3. We work on a fix and coordinate disclosure timing with the reporter.
+4. Fix is released and advisory is published.
+5. Reporter is credited (unless they prefer anonymity).
+
+## Attribution
+
+Security reports are handled by **André Henrique** ([@mrhenrike](https://github.com/mrhenrike)).

@@ -114,6 +114,10 @@ class WebScraper:
         proxy: Optional[str] = None,
         extra_headers: Optional[dict[str, str]] = None,
         stopwords: Optional[frozenset[str]] = None,
+        with_numbers: bool = False,
+        with_spaces: bool = False,
+        capture_paths: bool = False,
+        capture_subdomains: bool = False,
     ) -> None:
         self.start_url = start_url
         self.depth = depth
@@ -124,9 +128,14 @@ class WebScraper:
         self.delay = delay
         self.timeout = timeout
         self.stopwords: frozenset[str] = stopwords if stopwords is not None else frozenset()
+        self.with_numbers = with_numbers
+        self.with_spaces = with_spaces
+        self.capture_paths = capture_paths
+        self.capture_subdomains = capture_subdomains
 
         parsed = urlparse(start_url)
         self.base_domain = f"{parsed.scheme}://{parsed.netloc}"
+        self._parsed_start = parsed
 
         self.session = requests.Session()
         self.session.headers["User-Agent"] = user_agent or self.DEFAULT_UA
@@ -160,28 +169,61 @@ class WebScraper:
             logger.debug("Erro ao acessar %s: %s", url, exc)
             return None
 
-    def _extract_words(self, html: str) -> set[str]:
+    def _extract_words(self, html: str, url: str = "") -> set[str]:
         """
         Extrai palavras únicas de um HTML.
 
         Args:
             html: Conteúdo HTML.
+            url: Source URL for path/subdomain extraction.
 
         Returns:
             Set de palavras extraídas.
         """
         soup = BeautifulSoup(html, "lxml")
-        # Remover scripts e styles
         for tag in soup(["script", "style", "noscript"]):
             tag.decompose()
 
         text = soup.get_text(separator=" ")
         words: set[str] = set()
+
         for match in _WORD_RE.finditer(text):
             word = match.group()
             if self.min_word_len <= len(word) <= self.max_word_len:
                 if word.lower() not in self.stopwords:
                     words.add(word)
+
+        if self.with_numbers:
+            _NUM_WORD_RE = re.compile(r"[a-zA-Z0-9À-ÿ][a-zA-Z0-9À-ÿ'-]+")
+            for match in _NUM_WORD_RE.finditer(text):
+                word = match.group()
+                if self.min_word_len <= len(word) <= self.max_word_len:
+                    if word.lower() not in self.stopwords:
+                        words.add(word)
+
+        if self.with_spaces:
+            _PHRASE_RE = re.compile(r"[a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ\s'-]{4,60}")
+            for match in _PHRASE_RE.finditer(text):
+                phrase = match.group().strip()
+                if " " in phrase and self.min_word_len <= len(phrase) <= self.max_word_len:
+                    words.add(phrase)
+
+        if url and self.capture_paths:
+            parsed = urlparse(url)
+            segments = [s for s in parsed.path.split("/") if s and len(s) >= 2]
+            for seg in segments:
+                clean = re.sub(r"[^a-zA-Z0-9_-]", "", seg)
+                if clean and len(clean) >= self.min_word_len:
+                    words.add(clean)
+
+        if url and self.capture_subdomains:
+            parsed = urlparse(url)
+            hostname = parsed.hostname or ""
+            labels = hostname.split(".")
+            for label in labels[:-2]:
+                if label and len(label) >= 2:
+                    words.add(label)
+
         return words
 
     def _extract_emails(self, html: str) -> set[str]:
@@ -265,7 +307,7 @@ class WebScraper:
             if not html:
                 continue
 
-            words = self._extract_words(html)
+            words = self._extract_words(html, url=url)
             new_words = words - all_words
             all_words |= words
 

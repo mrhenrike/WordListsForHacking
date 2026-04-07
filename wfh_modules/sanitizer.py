@@ -5,29 +5,34 @@ Funcionalidades:
   - Remover linhas em branco
   - Remover comentários (linhas iniciando com #)
   - Deduplicação (manter apenas linhas únicas)
-  - Ordenação: alfabética, por comprimento, reversa, aleatória
+  - Ordenação: alfabética, por comprimento, reversa, aleatória, frequência
   - Filtros de comprimento: --min-len, --max-len
   - Reverse de arquivo (cat -> tac, última linha primeiro)
   - Filtros customizados por regex
+  - Strip control characters (tabs, null bytes, escape sequences)
   - Replace in-place ou para arquivo de saída
 
 Uso:
   wfh.py sanitize lista.lst
   wfh.py sanitize lista.lst --min-len 8 --max-len 20 --sort alpha -o saida.lst
+  wfh.py sanitize lista.lst --strip-control --sort frequency -o saida.lst
   wfh.py sanitize lista.lst --filter "^[a-zA-Z]" --no-comments --dedupe
   wfh.py reverse lista.lst -o invertida.lst
 
 Autor: André Henrique (@mrhenrike)
-Versão: 1.0.0
+Versão: 1.1.0
 """
 
 import logging
 import random
 import re
+from collections import Counter
 from pathlib import Path
 from typing import Generator, Optional
 
 logger = logging.getLogger(__name__)
+
+_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
 def _read_lines(filepath: str) -> list[str]:
@@ -62,18 +67,20 @@ def sanitize(
     filter_pattern: Optional[str] = None,
     exclude_pattern: Optional[str] = None,
     inplace: bool = False,
+    strip_control: bool = False,
 ) -> dict:
     """
     Sanitiza uma wordlist aplicando todos os filtros configurados.
 
     A ordem de aplicação é:
+      0. Strip control characters (if strip_control=True)
       1. Remover comentários (# no início)
       2. Remover linhas em branco
       3. Filtro de comprimento (min_len / max_len)
       4. Filtro por regex (filter_pattern)
       5. Exclusão por regex (exclude_pattern)
       6. Deduplicação
-      7. Ordenação
+      7. Ordenação (alpha, length, random, frequency)
 
     Args:
         filepath: Caminho do arquivo de entrada.
@@ -101,8 +108,18 @@ def sanitize(
         "removed_filter": 0,
         "removed_exclude": 0,
         "removed_dupes": 0,
+        "stripped_control": 0,
         "total_output": 0,
     }
+
+    if strip_control:
+        cleaned: list[str] = []
+        for line in lines:
+            new_line = _CONTROL_RE.sub("", line)
+            if new_line != line:
+                stats["stripped_control"] += 1
+            cleaned.append(new_line)
+        lines = cleaned
 
     result: list[str] = []
 
@@ -160,6 +177,9 @@ def sanitize(
         result.sort(key=len, reverse=True)
     elif sort_mode == "random":
         random.shuffle(result)
+    elif sort_mode == "frequency":
+        freq = Counter(result)
+        result.sort(key=lambda x: freq[x], reverse=True)
 
     stats["total_output"] = len(result)
 
@@ -223,6 +243,7 @@ def format_sanitize_stats(stats: dict, filepath: str) -> str:
         f"  Filtro regex (excl):{stats['removed_filter']:>10,}",
         f"  Exclusão regex:     {stats['removed_exclude']:>10,}",
         f"  Duplicatas:         {stats['removed_dupes']:>10,}",
+        f"  Control chars strip:{stats.get('stripped_control', 0):>10,}",
         f"  {'─'*30}",
         f"  Saída final:        {stats['total_output']:>10,}",
     ]
