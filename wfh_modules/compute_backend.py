@@ -16,6 +16,7 @@ Adapted from RouterXPL-Forge patterns (github.com/mrhenrike/RouterXPL-Forge).
 Author: André Henrique (@mrhenrike)
 Version: 1.0.0
 """
+from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod

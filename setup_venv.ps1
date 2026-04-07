@@ -1,36 +1,77 @@
-# setup_venv.ps1 — Configura ambiente virtual para wfh.py (Windows)
-# Autor: André Henrique (@mrhenrike)
-# Compatível com PowerShell 5.1+ e Python 3.8+
+# setup_venv.ps1 — Setup virtual environment for wfh.py (Windows)
+# Author: André Henrique (@mrhenrike)
+# Compatible with Windows 10/11 PowerShell 5.1+
 
 $ErrorActionPreference = "Stop"
+$VenvDir = ".venv"
+$PythonMin = "3.8"
 
-$VENV_DIR = ".venv"
+Write-Host "=== wfh.py — Virtual Environment Setup (Windows) ===" -ForegroundColor Cyan
+Write-Host ""
 
-Write-Host "=== wfh.py — Setup de ambiente virtual ===" -ForegroundColor Cyan
+# Check Python
+$pythonCmd = $null
+foreach ($cmd in @("python", "python3", "py")) {
+    try {
+        $ver = & $cmd --version 2>&1
+        if ($ver -match "Python (\d+\.\d+)") {
+            $pythonCmd = $cmd
+            Write-Host "Python found: $ver ($cmd)" -ForegroundColor Green
+            break
+        }
+    } catch {}
+}
 
-# Verificar Python
-try {
-    $pyVer = python --version 2>&1
-    Write-Host "Python detectado: $pyVer"
-} catch {
-    Write-Host "ERRO: Python nao encontrado. Instale Python >= 3.8." -ForegroundColor Red
+if (-not $pythonCmd) {
+    Write-Host "ERROR: Python not found." -ForegroundColor Red
+    Write-Host ""
+    Write-Host "Install Python from: https://www.python.org/downloads/" -ForegroundColor Yellow
+    Write-Host "Or via winget:  winget install Python.Python.3.12" -ForegroundColor Yellow
+    Write-Host "Or via scoop:   scoop install python" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Make sure to check 'Add Python to PATH' during installation." -ForegroundColor Yellow
     exit 1
 }
 
-# Criar venv
-if (-not (Test-Path $VENV_DIR)) {
-    python -m venv $VENV_DIR
-    Write-Host "venv criado em $VENV_DIR"
+# Create venv
+if (-not (Test-Path $VenvDir)) {
+    Write-Host "Creating virtual environment at $VenvDir..."
+    & $pythonCmd -m venv $VenvDir
+    Write-Host "venv created." -ForegroundColor Green
 } else {
-    Write-Host "venv ja existe em $VENV_DIR"
+    Write-Host "venv already exists at $VenvDir" -ForegroundColor Yellow
 }
 
-# Ativar e instalar
-& "$VENV_DIR\Scripts\Activate.ps1"
-python -m pip install --upgrade pip --quiet
-python -m pip install -r requirements.txt
+# Activate
+$activateScript = Join-Path $VenvDir "Scripts\Activate.ps1"
+if (Test-Path $activateScript) {
+    & $activateScript
+} else {
+    Write-Host "ERROR: Could not find activation script at $activateScript" -ForegroundColor Red
+    exit 1
+}
+
+# Upgrade pip
+Write-Host ""
+Write-Host "--- Upgrading pip ---" -ForegroundColor Cyan
+& pip install --upgrade pip --quiet
+
+# Install dependencies
+Write-Host ""
+Write-Host "--- Installing core dependencies ---" -ForegroundColor Cyan
+& pip install -r requirements.txt
 
 Write-Host ""
-Write-Host "=== Ambiente configurado! ===" -ForegroundColor Green
-Write-Host "Para ativar: .venv\Scripts\Activate.ps1"
-Write-Host "Para rodar:  python wfh.py --help"
+Write-Host "=== Environment ready! ===" -ForegroundColor Green
+Write-Host ""
+Write-Host "Activate: .\.venv\Scripts\Activate.ps1" -ForegroundColor White
+Write-Host "Run:      python wfh.py --help" -ForegroundColor White
+Write-Host "Or:       wfh --help  (if installed via pip)" -ForegroundColor White
+Write-Host ""
+Write-Host "Optional extras:" -ForegroundColor Cyan
+Write-Host "  pip install wfh-wordlist[docs]   # PDF/XLSX/DOCX parsing"
+Write-Host "  pip install wfh-wordlist[ocr]    # OCR/image text extraction"
+Write-Host "  pip install wfh-wordlist[full]   # All optional dependencies"
+Write-Host ""
+Write-Host "Windows prerequisites for OCR (optional):" -ForegroundColor Cyan
+Write-Host "  winget install UB-Mannheim.TesseractOCR" -ForegroundColor White
