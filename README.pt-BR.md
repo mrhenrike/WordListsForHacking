@@ -1,31 +1,79 @@
 # WordListsForHacking
 
 > **Autor:** André Henrique ([@mrhenrike](https://github.com/mrhenrike))  
-> **Versão:** 2.0.0 · **Licença:** MIT · **Atualizado:** 2026-03-30
+> **Versão:** 2.1.0 · **Licença:** MIT · **Atualizado:** 2026-03-30
 
 Wordlists curadas para testes de penetração autorizados, exercícios de red team,
 treinamentos SOC e workshops de segurança — focadas em ambientes brasileiros e
 defaults globais de dispositivos.
+Inclui **wfh.py** — ferramenta unificada de geração de wordlists (CUPP + Crunch + CeWL + alterx + pipal).
 
 ---
 
-## Arquivos
+## Estrutura do Repositório
 
-| Arquivo | Tipo | Linhas (aprox.) | Finalidade |
-|---------|------|-----------------|-----------|
-| `wlist_brasil.lst` | Senhas | ~1,4M | Senhas brasileiras: dicionário PT-BR + vazamentos reais + frases culturais + variações leet |
-| `username_br.lst` | Usuários | ~350 | Usernames brasileiros e globais: funções corporativas, contas padrão, padrões MSP/MSSP |
-| `default-creds-combo.lst` | `user:password` | ~4.500 | Credenciais default para 200+ fabricantes/softwares — sem filtro de tamanho |
-| `labs_passwords.lst` | Senhas | ~116 | Senhas usadas nas aulas e eventos do Prof. André |
-| `labs_users.lst` | Usuários | ~10 | Usuários usados em aulas e eventos |
-| `labs_mikrotik_pass.lst` | Senhas | ~38 | Senhas MikroTik para demonstrações com ferramentas |
+```
+WordListsForHacking/
+├── labs/                    # Wordlists para workshops, aulas e eventos (manuais)
+│   ├── labs_passwords.lst   # Senhas usadas nos eventos do Prof. André
+│   ├── labs_users.lst       # Usuários usados em aulas e eventos
+│   └── labs_mikrotik_pass.lst  # Senhas MikroTik para demos
+│
+├── usernames/               # Listas de usernames — consolidadas pela equipe
+│   └── username_br.lst      # Usernames brasileiros e globais (~1.1K entradas)
+│
+├── passwords/               # Senhas/wordlists — consolidadas + geradas pelo time
+│   ├── wlist_brasil.lst     # Senhas brasileiras (~1,58M entradas únicas)
+│   └── default-creds-combo.lst  # Combos de credenciais default (user:password)
+│
+├── generated/               # Saída padrão do wfh.py (não versionado por padrão)
+│
+├── wfh.py                   # CLI unificado de geração de wordlists (v1.1.0)
+├── wfh_modules/             # Módulos do wfh.py (leet, charset, pattern, ocr, scrape...)
+├── data/                    # Dados estáticos para geração (pharma_br.py, etc.)
+├── vendor/                  # Ferramentas de referência clonadas (cupp, crunch, cewl...)
+├── requirements.txt
+├── setup_venv.sh / setup_venv.ps1
+└── update_wordlists.py      # Script de consolidação automática de wordlists
+```
+
+---
+
+## Wordlists
+
+### `labs/` — Listas para Workshops e Treinamentos
+
+| Arquivo | Tipo | Entradas | Finalidade |
+|---------|------|----------|-----------|
+| `labs/labs_passwords.lst` | Senhas | ~116 | Senhas usadas nas aulas e eventos do Prof. André |
+| `labs/labs_users.lst` | Usuários | ~10 | Usuários usados em aulas e eventos |
+| `labs/labs_mikrotik_pass.lst` | Senhas | ~38 | Senhas MikroTik para demonstrações com ferramentas |
+
+> **Nota:** As listas de labs são mantidas manualmente pelo instrutor. Não modifique via scripts.
+
+### `usernames/` — Listas de Usernames Consolidadas
+
+| Arquivo | Tipo | Entradas | Finalidade |
+|---------|------|----------|-----------|
+| `usernames/username_br.lst` | Usuários | ~1.168 | Usernames brasileiros e globais: funções corporativas, contas padrão, padrões MSP/MSSP |
+
+### `passwords/` — Listas de Senhas Consolidadas
+
+| Arquivo | Tipo | Entradas | Finalidade |
+|---------|------|----------|-----------|
+| `passwords/wlist_brasil.lst` | Senhas | ~1,58M | Senhas brasileiras: dicionário PT-BR + vazamentos reais + frases culturais + variações leet |
+| `passwords/default-creds-combo.lst` | `user:password` | ~2.440 | Credenciais default para 200+ fabricantes/softwares — sem filtro de tamanho |
+
+### `generated/` — Saída do wfh.py
+
+Listas geradas pelo **wfh.py** são salvas aqui por padrão. Esta pasta é gitignored — adicione listas específicas ao versionamento apenas após curação e validação.
 
 ---
 
 ## Por que sequências puramente numéricas NÃO estão incluídas
 
 Sequências 100% numéricas (PINs, datas, CPFs, CNPJs, telefones, RGs) são
-**intencionalmente omitidas** de `wlist_brasil.lst` e `username_br.lst`.
+**intencionalmente omitidas** de `passwords/wlist_brasil.lst` e `usernames/username_br.lst`.
 
 **Motivo:** Ferramentas como `crunch`, `cupp` e `hashcat --increment` geram esses
 conjuntos **localmente em segundos**, com muito mais eficiência do que manter

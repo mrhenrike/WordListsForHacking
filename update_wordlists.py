@@ -42,9 +42,9 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # ARQUIVOS DE SAÍDA
 # ---------------------------------------------------------------------------
-WLIST_FILE = BASE_DIR / "wlist_brasil.lst"
-USERNAME_FILE = BASE_DIR / "username_br.lst"
-COMBO_FILE = BASE_DIR / "default-creds-combo.lst"
+WLIST_FILE = BASE_DIR / "passwords" / "wlist_brasil.lst"
+USERNAME_FILE = BASE_DIR / "usernames" / "username_br.lst"
+COMBO_FILE = BASE_DIR / "passwords" / "default-creds-combo.lst"
 
 # ---------------------------------------------------------------------------
 # FUNÇÕES AUXILIARES

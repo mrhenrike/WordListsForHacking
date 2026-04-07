@@ -1,3 +1,10 @@
 __pycache__/
 *.pyc
 .log/
+.tmp/
+.env
+
+# Listas geradas pelo wfh.py (versionar apenas quando curadas)
+generated/*.lst
+generated/*.txt
+!generated/.gitkeep
