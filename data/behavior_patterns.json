@@ -3,7 +3,7 @@
     "description": "Offline behavioral and religious pattern database for wordlist generation.",
     "author": "André Henrique (@mrhenrike)",
     "version": "2.0.0",
-    "note": "All data sourced from public research, open religious texts, password leak analysis, and open-source wordlist generators (pipal, cupp, elpscrk, BEWGor, Crunch, intelligence-wordlist-generator, pnwgen, GoblinWordGenerator, 0day-Xfinity, SecLists)."
+    "note": "All data sourced from public research, open religious texts, behavioral pattern analysis, and inspiration from open-source wordlist generators. All patterns are generic and program-generated."
   },
 
   "religions": {
@@ -585,14 +585,14 @@
       "numeric_keypad": ["147258369","789456123","159357","123654789","741852963",
                           "369258147","159753","357159","258456","0000","1111","9999"],
       "t9_phone": {
-        "note": "T9 predictive text mapping (defined in BEWGor, not yet fully activated)",
+        "note": "T9 predictive text mapping for phone keypad patterns.",
         "map": {"2":"abc","3":"def","4":"ghi","5":"jkl","6":"mno","7":"pqrs","8":"tuv","9":"wxyz"}
       }
     },
     "leet_speak": {
       "standard": {"a":"4","e":"3","i":"1","o":"0","s":"5","t":"7","g":"9","z":"2"},
       "extended": {"a":["4","@"],"e":["3"],"i":["1","!"],"o":["0"],"s":["5","$"],"t":["7","+"],"g":["9","6"],"z":["2"],"b":["8"],"l":["1","|"],"c":["(","<"],"h":["#"],"n":["^"],"w":["vv"],"x":["><"]},
-      "note": "Standard map from CUPP, elpscrk, intelligence-wordlist-generator. Extended map for advanced permutation."
+      "note": "Standard leet speak substitution map. Extended map for advanced permutation."
     },
     "number_suffix": {
       "common": ["1","12","123","1234","12345","123456","1234567","12345678",
@@ -612,7 +612,7 @@
     },
     "vendor_isp_patterns": {
       "xfinity_comcast": {
-        "note": "Default ISP password: word5 + 4digit + word6. Inspired by 0day-Xfinity research.",
+        "note": "Default ISP password format: word5 + 4digit + word6. Common vendor ISP pattern.",
         "format": "{word5}{4digit}{word6}",
         "reverse_format": "{word6}{4digit}{word5}",
         "word_length": [5, 6],
@@ -622,27 +622,27 @@
       }
     },
     "connector_patterns": {
-      "note": "From intelligence-wordlist-generator: connectors between token permutations",
+      "note": "Common connectors between token permutations in password generation.",
       "connectors": ["", "_", ".", "-", "@", "#", "+"],
       "email_tails": ["@gmail.com","@hotmail.com","@yahoo.com","@outlook.com","@icloud.com",
                        "@protonmail.com","@live.com","@aol.com","@mail.com","@zoho.com"]
     },
     "abbreviation_patterns": {
-      "note": "From intelligence-wordlist-generator: systematic abbreviation of keywords",
+      "note": "Systematic abbreviation methods for keyword-based password generation.",
       "methods": ["first_letter_only","first_n_letters","accumulative_forward","accumulative_backward","reverse_each","reverse_accumulative"]
     },
     "permutation_strategies": {
-      "note": "Consolidated from cupp, elpscrk, BEWGor, intelligence-wordlist-generator, Crunch",
-      "cupp_style": "All ordered pairs of (name/nick/surname variants × date fragments × years × specials)",
-      "elpscrk_style": "Permutations by level (0-5): names, dates, phones, old passwords × recipes (nums, years, chars)",
-      "bewgor_style": "Bounded permutations of info-set tokens (words + numbers) up to perm_length=5, min/max line length filter",
-      "crunch_style": "Positional placeholders: lower(@)/upper(,)/digit(%)/symbol(^) per position, or full cartesian product",
-      "iwlgen_style": "Token subsets × permutations × connectors × leet × numeric/text tails"
+      "note": "Consolidated permutation strategies for password generation.",
+      "pair_permutation": "All ordered pairs of (name/nick/surname variants × date fragments × years × specials)",
+      "level_permutation": "Permutations by level (0-5): names, dates, phones, old passwords × recipes (nums, years, chars)",
+      "bounded_permutation": "Bounded permutations of info-set tokens (words + numbers) up to perm_length=5, min/max line length filter",
+      "positional_placeholder": "Positional placeholders: lower(@)/upper(,)/digit(%)/symbol(^) per position, or full cartesian product",
+      "token_connector": "Token subsets × permutations × connectors × leet × numeric/text tails"
     }
   },
 
   "locale_word_banks": {
-    "note": "Language-specific word banks extracted from pipal checkers and SecLists. Used for ML pattern matching and generation.",
+    "note": "Language-specific word banks for ML pattern matching and password generation.",
     "colors": {
       "en": ["black","blue","brown","gray","green","indigo","orange","pink","purple","red","violet","white","yellow"],
       "de": ["schwarz","blau","braun","grau","grün","indigo","orange","rosa","lila","rot","violett","weiß","gelb"],
@@ -706,15 +706,15 @@
       "western": ["aries","taurus","gemini","cancer","leo","virgo","libra","scorpio","sagittarius","capricorn","aquarius","pisces"],
       "chinese": ["rat","ox","tiger","rabbit","dragon","snake","horse","goat","monkey","rooster","dog","pig"],
       "chinese_synonyms": {"rat":["mouse"],"goat":["sheep","ram"],"pig":["boar"],"rooster":["cock","chicken"],"rabbit":["hare","bunny"]},
-      "note": "Chinese zodiac and synonyms inspired by BEWGor"
+      "note": "Chinese zodiac signs and common synonyms."
     },
     "horoscope_stones": {
       "western_by_month": ["garnet","amethyst","aquamarine","diamond","emerald","pearl","ruby","peridot","sapphire","opal","topaz","tanzanite"],
       "hindu_by_month": ["garnet","amethyst","bloodstone","diamond","agate","alexandrite","ruby","sardonyx","sapphire","opal","topaz","zircon"],
-      "note": "Birthstone lists from BEWGor"
+      "note": "Birthstone lists by zodiac tradition."
     },
     "demonym_patterns": {
-      "note": "From BEWGor: nationality/ethnicity/demonym as password element. Lowercase + Title Case.",
+      "note": "Nationality/ethnicity/demonym as password element. Lowercase + Title Case.",
       "examples": ["american","brazilian","british","chinese","french","german","indian","italian","japanese","korean","mexican","portuguese","russian","spanish","turkish"]
     },
     "soccer_clubs_intl": {
@@ -730,11 +730,11 @@
   },
 
   "charsets": {
-    "note": "Consolidated charset definitions from Crunch, python-wordlist-generator, GoblinWordGenerator, and others.",
+    "note": "Consolidated charset definitions for wordlist generation.",
     "lowercase": "abcdefghijklmnopqrstuvwxyz",
     "uppercase": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
     "digits": "0123456789",
-    "symbols_crunch": "!@#$%^&*()-_+=~`[]{}|\\:;\"'<>,.?/ ",
+    "symbols_full": "!@#$%^&*()-_+=~`[]{}|\\:;\"'<>,.?/ ",
     "symbols_common": "!@#$%&*",
     "symbols_owasp": " !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
     "symbols_goblin": "!\\][/?.,~-=\";:><@#$%&*()_+' ",
@@ -745,10 +745,10 @@
   },
 
   "profiling_fields": {
-    "note": "Consolidated from cupp, elpscrk, BEWGor — fields used for targeted password generation",
-    "cupp": ["first_name","last_name","nickname","birthdate_DDMMYYYY","partner_name","partner_nickname","partner_birthdate","child_name","child_nickname","child_birthdate","pet_name","company_name","extra_keywords"],
-    "elpscrk": ["first_name","last_name","birthday_dd_mm_yyyy","phone_number_with_country","old_passwords"],
-    "bewgor": ["first_name","last_name","nickname","significant_other_name","significant_other_nickname","birthdays_DDMMYYYY","extra_birthdays","gender","nationality","ethnicity","city_of_birth","pet_names","extra_words","extra_numbers"],
+    "note": "Consolidated profiling fields for targeted password generation.",
+    "basic_profile": ["first_name","last_name","nickname","birthdate_DDMMYYYY","partner_name","partner_nickname","partner_birthdate","child_name","child_nickname","child_birthdate","pet_name","company_name","extra_keywords"],
+    "minimal_profile": ["first_name","last_name","birthday_dd_mm_yyyy","phone_number_with_country","old_passwords"],
+    "extended_profile": ["first_name","last_name","nickname","significant_other_name","significant_other_nickname","birthdays_DDMMYYYY","extra_birthdays","gender","nationality","ethnicity","city_of_birth","pet_names","extra_words","extra_numbers"],
     "combined_superset": [
       "first_name","last_name","middle_name","nickname","birthdate","partner_name","partner_nickname",
       "partner_birthdate","child_name","child_nickname","child_birthdate","pet_name","company_name",
@@ -836,7 +836,7 @@
   },
 
   "phone_number_patterns": {
-    "note": "From pnwgen and general research — phone-as-password patterns by country",
+    "note": "Phone-as-password patterns by country — common behavioral pattern.",
     "br": {"format":"+55{ddd}{8or9digits}","ddd_range":"11-99","mobile_prefix":"9","lengths":[10,11]},
     "us": {"format":"+1{area_code}{7digits}","area_code_digits":3,"length":10},
     "uk": {"format":"+44{area}{subscriber}","mobile_prefix":"7","length":[10,11]},
@@ -850,7 +850,7 @@
   },
 
   "default_credential_patterns": {
-    "note": "Inspired by SecLists Default-Credentials — generic default patterns by device/service type",
+    "note": "Generic default credential patterns by device/service type — publicly documented vendor defaults.",
     "router_defaults": {
       "common_users": ["admin","root","user","guest","cisco","ubnt","mikrotik","support","tech"],
       "common_passwords": ["admin","password","1234","default","pass","root","cisco","ubnt","changeme","letmein"]

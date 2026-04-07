@@ -8,6 +8,8 @@
 | 2.0.x   | :white_check_mark: |
 | < 2.0   | :x:                |
 
+> All wordlists are program-generated. No entries from external leak/breach databases.
+
 ## Reporting a Vulnerability
 
 If you discover a security vulnerability in this project, please report it

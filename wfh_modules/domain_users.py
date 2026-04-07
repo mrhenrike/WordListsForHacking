@@ -449,7 +449,7 @@ def generate_subdomain_admin_users(
     """
     Generate admin/service account usernames from subdomain prefixes.
 
-    Pattern: a1t3ngrt.securonix.net → a1t3ngrtadmin, a1t3ngrt_admin, etc.
+    Pattern: corp-ad.acme.com → corp-adadmin, corp-ad_admin, etc.
 
     Args:
         subdomains: List of subdomain prefixes (e.g., ['a1t3ngrt', 'webmail']).
