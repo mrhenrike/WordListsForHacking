@@ -16,8 +16,8 @@ Suporta variáveis:
   {seq6}          -> sequencial de 6 dígitos
 
 Exemplos de uso:
-  wfh.py pattern -t "DS{cod}@rd.com.br" --vars cod=1000-9999
-  wfh.py pattern -t "{empresa}#{ano}" --vars empresa=Drogasil,Hapvida ano=2020-2026
+  wfh.py pattern -t "SVC{cod}@acme.local" --vars cod=1000-9999
+  wfh.py pattern -t "{empresa}#{ano}" --vars empresa=Acme,Globex ano=2020-2026
   wfh.py pattern -f patterns.txt --vars empresa=ACME cod=1000-1999
 
 Autor: André Henrique (@mrhenrike)
@@ -153,10 +153,10 @@ def generate_company_patterns(
     Gera variações de senha baseadas em nome de empresa e anos.
 
     Padrões gerados:
-      {empresa}{sep}{ano}    -> Drogasil@2024
-      {empresa}{sep}{cod}    -> Drogasil#1206
-      {empresa_upper}{ano}   -> DROGASIL2024
-      {empresa_lower}{ano}   -> drogasil2024
+      {empresa}{sep}{ano}    -> Acme@2024
+      {empresa}{sep}{cod}    -> Acme#1206
+      {empresa_upper}{ano}   -> ACME2024
+      {empresa_lower}{ano}   -> acme2024
 
     Args:
         empresa: Nome da empresa.
@@ -206,11 +206,11 @@ def generate_pharma_patterns(
     Gera variações de senha baseadas nos padrões identificados via OCR.
 
     Padrões:
-      DS{cod}@rd.com.br
-      memed{cnpj}
-      Drogasil#{cod}
-      DROGA{cod}
-      drogasil{cod}
+      SVC{cod}@acme.local
+      company{cnpj}
+      Company#{cod}
+      COMP{cod}
+      company{cod}
 
     Args:
         store_codes: Lista de códigos de loja (ex: ['1206', '1207']).

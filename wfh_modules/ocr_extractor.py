@@ -47,8 +47,8 @@ _USERNAME_PATTERNS = [
 
 # Padrões típicos de passwords
 _PASSWORD_PATTERNS = [
-    re.compile(r"^[a-zA-Z]+#\d+$"),                # Drogasil#1206
-    re.compile(r"^[a-zA-Z]+\d{4,}$"),              # drogasil1206, memed61585...
+    re.compile(r"^[a-zA-Z]+#\d+$"),                # Company#1206
+    re.compile(r"^[a-zA-Z]+\d{4,}$"),              # company1206, acme61585...
     re.compile(r".*[!@#$%&*_\-].*"),               # tem caractere especial
     re.compile(r"^[a-zA-Z0-9]{8,}$"),              # string alfanumérica longa
 ]
