@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-wfh.py — WordList For Hacking v1.0.0
+wfh.py — WordList For Hacking v1.1.0
 
 Ferramenta unificada de geração de wordlists para pentest e red team.
 Merge de funcionalidades: CUPP + Crunch + CeWL + BEWGor + alterx + pipal + ...
@@ -20,9 +20,11 @@ Modos de uso:
   python wfh.py dns -w words.lst -d empresa.com.br
   python wfh.py pharma                   # padrões de farmácias BR
   python wfh.py charset --create-charset meu_charset.cfg
+  python wfh.py sanitize lista.lst       # sanitização de wordlist existente
+  python wfh.py reverse lista.lst        # inverter ordem (tac)
 
 Autor: André Henrique (@mrhenrike)
-Versão: 1.0.0
+Versão: 1.1.0
 """
 
 import argparse
@@ -31,6 +33,14 @@ import os
 import sys
 from pathlib import Path
 from typing import Generator, Optional
+
+# Forçar UTF-8 no stdout/stderr para Windows (evita UnicodeEncodeError com acentos)
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except AttributeError:
+        pass
 
 # ── Colorama ─────────────────────────────────────────────────────────────────
 try:
@@ -61,7 +71,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "1.0.0"
+VERSION = "1.1.0"
 
 _BANNER_ART = (
     " __          _______ _    _         \n"
@@ -95,6 +105,8 @@ MENU = f"""
   {Fore.GREEN}[10]{Style.RESET_ALL} merge     — Merge e deduplicação de wordlists
   {Fore.GREEN}[11]{Style.RESET_ALL} dns       — Wordlist para fuzzing DNS/subdomínios
   {Fore.GREEN}[12]{Style.RESET_ALL} pharma    — Padrões farmacêuticos e planos de saúde BR
+  {Fore.GREEN}[13]{Style.RESET_ALL} sanitize  — Sanitizar wordlist (dedupe, sort, filtros, remove blanks/#)
+  {Fore.GREEN}[14]{Style.RESET_ALL} reverse   — Inverter ordem das linhas (cat -> tac)
   {Fore.GREEN}[0]{Style.RESET_ALL} Sair
 """
 
@@ -479,6 +491,58 @@ def cmd_pharma(args: argparse.Namespace) -> None:
     _ok(f"Geradas: {count:,} entradas")
 
 
+def cmd_sanitize(args: argparse.Namespace) -> None:
+    """Handler para sanitização de wordlist."""
+    from wfh_modules.sanitizer import sanitize, format_sanitize_stats
+
+    inplace = getattr(args, "inplace", False)
+    output = getattr(args, "output", None)
+
+    try:
+        stats = sanitize(
+            filepath=args.wordlist,
+            output=output,
+            no_blank=not getattr(args, "keep_blank", False),
+            no_comments=not getattr(args, "keep_comments", False),
+            dedupe=not getattr(args, "no_dedupe", False),
+            sort_mode=getattr(args, "sort", None),
+            min_len=getattr(args, "min_len", None),
+            max_len=getattr(args, "max_len", None),
+            filter_pattern=getattr(args, "filter", None),
+            exclude_pattern=getattr(args, "exclude", None),
+            inplace=inplace,
+        )
+    except FileNotFoundError as exc:
+        _err(str(exc))
+        return
+
+    _ok(format_sanitize_stats(stats, args.wordlist))
+    if output:
+        _ok(f"Salvo em: {output}")
+    elif inplace:
+        _ok(f"Arquivo atualizado in-place: {args.wordlist}")
+
+
+def cmd_reverse(args: argparse.Namespace) -> None:
+    """Handler para inversão de wordlist (tac)."""
+    from wfh_modules.sanitizer import reverse_file
+
+    inplace = getattr(args, "inplace", False)
+    output = getattr(args, "output", None)
+
+    try:
+        count = reverse_file(args.wordlist, output=output, inplace=inplace)
+    except FileNotFoundError as exc:
+        _err(str(exc))
+        return
+
+    _ok(f"Invertidas: {count:,} linhas")
+    if output:
+        _ok(f"Salvo em: {output}")
+    elif inplace:
+        _ok(f"Arquivo atualizado in-place: {args.wordlist}")
+
+
 # ── Menu interativo ───────────────────────────────────────────────────────────
 
 def interactive_menu() -> None:
@@ -592,6 +656,30 @@ def interactive_menu() -> None:
         ns.codes = input("  Códigos de loja (ex: 1200-1300 ou 1200,1201, ou Enter para padrão): ").strip() or None
         cmd_pharma(ns)
 
+    elif choice == "13":
+        ns.wordlist = input("  Wordlist a sanitizar: ").strip()
+        ns.sort = input("  Ordenar (alpha/alpha-rev/length/length-rev/random/Enter para skip): ").strip() or None
+        min_raw = input("  Comprimento mínimo (Enter para skip): ").strip()
+        max_raw = input("  Comprimento máximo (Enter para skip): ").strip()
+        ns.min_len = int(min_raw) if min_raw else None
+        ns.max_len = int(max_raw) if max_raw else None
+        ns.filter = input("  Regex de inclusão (Enter para skip): ").strip() or None
+        ns.exclude = input("  Regex de exclusão (Enter para skip): ").strip() or None
+        ns.keep_blank = False
+        ns.keep_comments = False
+        ns.no_dedupe = False
+        ns.inplace = input("  Sobrescrever arquivo original? [s/N]: ").strip().lower() in ("s", "y")
+        if not ns.inplace:
+            ns.output = input("  Arquivo de saída (Enter para stdout): ").strip() or None
+        cmd_sanitize(ns)
+
+    elif choice == "14":
+        ns.wordlist = input("  Wordlist a inverter: ").strip()
+        ns.inplace = input("  Sobrescrever arquivo original? [s/N]: ").strip().lower() in ("s", "y")
+        if not ns.inplace:
+            ns.output = input("  Arquivo de saída (Enter para stdout): ").strip() or None
+        cmd_reverse(ns)
+
     elif choice == "0":
         _info("Encerrando wfh.py.")
         sys.exit(0)
@@ -625,6 +713,11 @@ def build_parser() -> argparse.ArgumentParser:
   python wfh.py merge l1.lst l2.lst --no-numeric --sort alpha -o merged.lst
   python wfh.py dns -w palavras.lst -d empresa.com.br
   python wfh.py pharma --codes 1200-1250 -o pharma_senhas.lst
+  python wfh.py sanitize wlist_brasil.lst --min-len 8 --sort alpha --inplace
+  python wfh.py sanitize lista.lst --filter "^[a-zA-Z]" --exclude "\\d{3,}$" -o limpa.lst
+  python wfh.py sanitize lista.lst --min-len 6 --max-len 20 --sort length -o saida.lst
+  python wfh.py reverse lista.lst -o invertida.lst
+  python wfh.py reverse lista.lst --inplace
 """,
     )
     parser.add_argument("--version", action="version", version=f"wfh.py {VERSION}")
@@ -740,6 +833,62 @@ def build_parser() -> argparse.ArgumentParser:
     p_ph.add_argument("--codes", help="Códigos de loja (ex: 1200-1300 ou 1200,1201)")
     p_ph.add_argument("-o", "--output", help="Arquivo de saída")
 
+    # ── sanitize ──────────────────────────────────────────────────────────
+    p_sa = sub.add_parser(
+        "sanitize",
+        help="Sanitizar wordlist (dedupe, sort, filtros, remove blanks e comentários)",
+        description=(
+            "Sanitiza uma wordlist existente aplicando filtros em cadeia:\n"
+            "  1. Remove comentários (#)  2. Remove linhas em branco\n"
+            "  3. Filtra por comprimento  4. Filtra por regex\n"
+            "  5. Deduplica               6. Ordena\n\n"
+            "Exemplos:\n"
+            "  wfh.py sanitize lista.lst --inplace\n"
+            "  wfh.py sanitize lista.lst --min-len 8 --sort alpha -o limpa.lst\n"
+            "  wfh.py sanitize lista.lst --filter '^[a-zA-Z]' --exclude '\\d{3,}$' -o saida.lst\n"
+            "  wfh.py sanitize lista.lst --min-len 6 --max-len 20 --sort length-rev -o saida.lst"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_sa.add_argument("wordlist", help="Wordlist a sanitizar")
+    p_sa.add_argument("--min-len", type=int, default=None, dest="min_len",
+                       help="Comprimento mínimo (remove entradas menores)")
+    p_sa.add_argument("--max-len", type=int, default=None, dest="max_len",
+                       help="Comprimento máximo (remove entradas maiores)")
+    p_sa.add_argument("--sort", dest="sort",
+                       choices=["alpha", "alpha-rev", "length", "length-rev", "random"],
+                       help="Ordenação da lista de saída")
+    p_sa.add_argument("--filter", dest="filter", metavar="REGEX",
+                       help="Regex de inclusão — mantém apenas linhas que fazem match")
+    p_sa.add_argument("--exclude", dest="exclude", metavar="REGEX",
+                       help="Regex de exclusão — remove linhas que fazem match")
+    p_sa.add_argument("--no-dedupe", action="store_true", dest="no_dedupe",
+                       help="Não remover duplicatas")
+    p_sa.add_argument("--keep-blank", action="store_true", dest="keep_blank",
+                       help="Manter linhas em branco")
+    p_sa.add_argument("--keep-comments", action="store_true", dest="keep_comments",
+                       help="Manter linhas de comentário (#)")
+    p_sa.add_argument("--inplace", action="store_true",
+                       help="Sobrescrever o arquivo original")
+    p_sa.add_argument("-o", "--output", help="Arquivo de saída (padrão: stdout)")
+
+    # ── reverse ───────────────────────────────────────────────────────────
+    p_rv = sub.add_parser(
+        "reverse",
+        help="Inverter a ordem das linhas de uma wordlist (cat -> tac)",
+        description=(
+            "Inverte a ordem das linhas de uma wordlist (equivalente ao comando 'tac').\n\n"
+            "Exemplos:\n"
+            "  wfh.py reverse lista.lst -o invertida.lst\n"
+            "  wfh.py reverse lista.lst --inplace"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_rv.add_argument("wordlist", help="Wordlist a inverter")
+    p_rv.add_argument("--inplace", action="store_true",
+                       help="Sobrescrever o arquivo original")
+    p_rv.add_argument("-o", "--output", help="Arquivo de saída (padrão: stdout)")
+
     return parser
 
 
@@ -768,18 +917,20 @@ def main() -> None:
 
     # Dispatch para handler do subcomando
     handlers = {
-        "charset": cmd_charset,
-        "pattern": cmd_pattern,
-        "profile": cmd_profile,
-        "scrape":  cmd_scrape,
-        "ocr":     cmd_ocr,
-        "extract": cmd_extract,
-        "leet":    cmd_leet,
-        "xor":     cmd_xor,
-        "analyze": cmd_analyze,
-        "merge":   cmd_merge,
-        "dns":     cmd_dns,
-        "pharma":  cmd_pharma,
+        "charset":  cmd_charset,
+        "pattern":  cmd_pattern,
+        "profile":  cmd_profile,
+        "scrape":   cmd_scrape,
+        "ocr":      cmd_ocr,
+        "extract":  cmd_extract,
+        "leet":     cmd_leet,
+        "xor":      cmd_xor,
+        "analyze":  cmd_analyze,
+        "merge":    cmd_merge,
+        "dns":      cmd_dns,
+        "pharma":   cmd_pharma,
+        "sanitize": cmd_sanitize,
+        "reverse":  cmd_reverse,
     }
 
     handler = handlers.get(args.command)
