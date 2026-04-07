@@ -3,22 +3,58 @@ profiler.py — Interactive personal target profiling for wordlist generation.
 
 Each variation is emitted as a separate line (one entry per line).
 Generates: case variants, leet variants, token combinations, date variations,
-social handles, location patterns, corporate keywords, and more.
+social handles, location patterns, corporate keywords, religious patterns,
+and behavioral patterns loaded from data/behavior_patterns.json.
 
 Usage:
   wfh.py profile                       # full interactive wizard
   wfh.py profile --name "John" --nick "johnny" --birth 1990
 
 Author: André Henrique (@mrhenrike)
-Version: 2.0.0
+Version: 2.1.0
 """
 
+import json
 import logging
 import re
 from datetime import datetime, date
+from pathlib import Path
 from typing import Generator, Optional
 
+_HERE = Path(__file__).resolve().parent.parent
+_BEHAVIOR_DB: Optional[dict] = None
+
 logger = logging.getLogger(__name__)
+
+
+def _load_behavior_db() -> dict:
+    """Load behavior_patterns.json once and cache it in memory."""
+    global _BEHAVIOR_DB
+    if _BEHAVIOR_DB is None:
+        path = _HERE / "data" / "behavior_patterns.json"
+        try:
+            with open(path, encoding="utf-8") as f:
+                _BEHAVIOR_DB = json.load(f)
+        except FileNotFoundError:
+            logger.warning("behavior_patterns.json not found at %s", path)
+            _BEHAVIOR_DB = {}
+    return _BEHAVIOR_DB
+
+
+def list_religions() -> list[tuple[str, str]]:
+    """
+    Return sorted list of (key, display_name) for all religions in the DB.
+
+    Returns:
+        List of (key, display) tuples.
+    """
+    db = _load_behavior_db()
+    religions = db.get("religions", {})
+    return sorted(
+        [(k, v.get("display", k)) for k, v in religions.items()],
+        key=lambda x: x[1],
+    )
+
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -475,6 +511,40 @@ def interactive_profile() -> dict:
         "Social media handles (with or without @, e.g. @mrhenrike or mrhenrike)"
     )
 
+    # ── Religion ──────────────────────────────────────────────
+    print("\n[ RELIGION & FAITH ]")
+    profile["religion_key"] = None
+    profile["religion_custom"] = None
+    profile["church_name"] = None
+    profile["church_group"] = None
+
+    has_religion = _ask("Add religion data? [y/N]").lower() in ("y", "yes")
+    if has_religion:
+        religions = list_religions()
+        print("\n  Available religions (enter number or press Enter to type custom):")
+        for idx, (key, display) in enumerate(religions, 1):
+            print(f"    {idx:>2}. {display}")
+        print(f"    {len(religions)+1:>2}. Other / not listed")
+
+        choice_raw = _ask(f"  Select [1-{len(religions)+1}]").strip()
+        if choice_raw.isdigit():
+            choice = int(choice_raw)
+            if 1 <= choice <= len(religions):
+                profile["religion_key"] = religions[choice - 1][0]
+                print(f"  Selected: {religions[choice - 1][1]}")
+            else:
+                profile["religion_custom"] = _ask("  Enter your religion name")
+        else:
+            profile["religion_custom"] = choice_raw if choice_raw else None
+
+        # Church / congregation (only if religion was filled)
+        if profile["religion_key"] or profile["religion_custom"]:
+            print()
+            has_church = _ask("Add church / congregation / group data? [y/N]").lower() in ("y", "yes")
+            if has_church:
+                profile["church_name"] = _ask("  Church or congregation name (e.g. Assembleia de Deus SP)")
+                profile["church_group"] = _ask("  Small group / cell / ministry name (or Enter to skip)")
+
     # ── Keywords & special dates ──────────────────────────────
     print("\n[ KEYWORDS & SPECIAL DATES ]")
     profile["keywords"] = _ask_multi("Keywords / topics of interest (hobbies, teams, idols...)")
@@ -484,6 +554,9 @@ def interactive_profile() -> dict:
     print("\n[ GENERATION OPTIONS ]")
     profile["leet_mode"] = _ask("Leet mode [none/basic/medium/aggressive] (default: basic)") or "basic"
     profile["with_spaces"] = _ask("Include spaces between words? [y/N]").lower() in ("y", "yes")
+    profile["use_behavior_patterns"] = _ask(
+        "Include behavioral/religious patterns from knowledge base? [Y/n]"
+    ).lower() not in ("n", "no")
     min_raw = _ask("Minimum password length (default: 6)")
     max_raw = _ask("Maximum password length (default: 32, 0 = unlimited)")
     profile["min_len"] = int(min_raw) if min_raw.isdigit() else 6
@@ -491,6 +564,215 @@ def interactive_profile() -> dict:
     profile["include_specials"] = _ask("Add special characters to combinations? [y/N]").lower() in ("y", "yes")
 
     return profile
+
+
+# ── Behavioral pattern generator ──────────────────────────────────────────────
+
+def _generate_from_behavior(
+    profile: dict,
+    seen: set[str],
+    min_len: int,
+    max_len: int,
+) -> Generator[str, None, None]:
+    """
+    Yield wordlist entries derived from religion and behavioral patterns in the JSON DB.
+
+    Uses data/behavior_patterns.json loaded offline.
+
+    Args:
+        profile: Profiler dict with religion_key, keywords, location_city, etc.
+        seen: Mutable dedup set.
+        min_len: Minimum entry length.
+        max_len: Maximum entry length.
+
+    Yields:
+        Individual wordlist entries.
+    """
+    db = _load_behavior_db()
+    if not db:
+        return
+
+    def _try(s: str) -> Optional[str]:
+        s = s.strip()
+        if s and s not in seen and min_len <= len(s) <= max_len:
+            seen.add(s)
+            return s
+        return None
+
+    anos = [str(y) for y in range(2016, 2027)]
+    seps = ["@", "#", "_", "-", "!", ".", ""]
+
+    # ── Religion patterns ──────────────────────────────────────
+    rel_key = profile.get("religion_key")
+    rel_custom = profile.get("religion_custom", "")
+    church = (profile.get("church_name") or "").strip()
+    group = (profile.get("church_group") or "").strip()
+
+    rel_data: dict = {}
+    if rel_key:
+        rel_data = db.get("religions", {}).get(rel_key, {})
+
+    # Keywords from religion
+    for kw in rel_data.get("keywords", []):
+        kw_clean = normalize(kw)
+        if not kw_clean:
+            continue
+        r = _try(kw_clean)
+        if r:
+            yield r
+        r = _try(kw_clean.capitalize())
+        if r:
+            yield r
+        # kw + year
+        for ano in anos:
+            for sep in ["@", "#", "_", ""]:
+                r = _try(f"{kw_clean}{sep}{ano}")
+                if r:
+                    yield r
+                r = _try(f"{kw_clean.capitalize()}{sep}{ano}")
+                if r:
+                    yield r
+
+    # Common phrases from religion
+    for phrase in rel_data.get("phrases", []):
+        p = phrase.strip()
+        if not p:
+            continue
+        r = _try(p)
+        if r:
+            yield r
+        r = _try(p.lower())
+        if r:
+            yield r
+        for ano in anos:
+            for sep in ["@", "#", ""]:
+                r = _try(f"{p}{sep}{ano}")
+                if r:
+                    yield r
+
+    # Verse references
+    for ref in rel_data.get("verse_refs", []):
+        r = _try(ref)
+        if r:
+            yield r
+        for ano in anos:
+            r = _try(f"{ref}{ano}")
+            if r:
+                yield r
+
+    # Holy names
+    for name in rel_data.get("holy_names", []):
+        n = normalize(name)
+        if not n:
+            continue
+        r = _try(n)
+        if r:
+            yield r
+        for ano in anos:
+            for sep in ["@", "#", ""]:
+                r = _try(f"{n}{sep}{ano}")
+                if r:
+                    yield r
+                r = _try(f"{n.lower()}{sep}{ano}")
+                if r:
+                    yield r
+
+    # Common titles from religion
+    for title in rel_data.get("common_titles", []):
+        t = normalize(title).replace(" ", "")
+        if not t:
+            continue
+        r = _try(t)
+        if r:
+            yield r
+
+    # Prebuilt common passwords
+    for pw in rel_data.get("common_passwords", []):
+        r = _try(pw)
+        if r:
+            yield r
+
+    # Church name patterns
+    if church:
+        ch_clean = normalize(church).replace(" ", "")
+        for sep in seps:
+            for ano in anos:
+                r = _try(f"{ch_clean}{sep}{ano}")
+                if r:
+                    yield r
+        r = _try(ch_clean)
+        if r:
+            yield r
+        r = _try(ch_clean.lower())
+        if r:
+            yield r
+        r = _try(ch_clean.upper())
+        if r:
+            yield r
+
+    # Church + group
+    if group:
+        gr_clean = normalize(group).replace(" ", "")
+        r = _try(gr_clean)
+        if r:
+            yield r
+        if ch_clean if church else "":
+            r = _try(f"{ch_clean}{gr_clean}")
+            if r:
+                yield r
+            for sep in ["@", "#", "_", ""]:
+                for ano in anos:
+                    r = _try(f"{gr_clean}{sep}{ano}")
+                    if r:
+                        yield r
+
+    # Custom religion name
+    if rel_custom:
+        rc = normalize(rel_custom).replace(" ", "")
+        for sep in seps:
+            for ano in anos:
+                r = _try(f"{rc}{sep}{ano}")
+                if r:
+                    yield r
+        r = _try(rc)
+        if r:
+            yield r
+
+    # ── BR cultural phrases ────────────────────────────────────
+    for phrase in db.get("cultural_phrases_br", {}).get("popular", []):
+        r = _try(phrase)
+        if r:
+            yield r
+    for phrase in db.get("cultural_phrases_br", {}).get("religious_phrases_br", []):
+        r = _try(phrase)
+        if r:
+            yield r
+
+    # ── Keyword-based behavioral patterns ─────────────────────
+    profile_keywords = [normalize(kw).replace(" ", "") for kw in profile.get("keywords", [])]
+    for kw in profile_keywords:
+        if not kw:
+            continue
+        for bp_key, bp_data in db.get("behavioral_patterns", {}).items():
+            # Check if keyword matches sports/music/gaming
+            bp_kws = [k.lower() for k in bp_data.get("keywords", [])]
+            if any(kw.lower() in bk or bk in kw.lower() for bk in bp_kws):
+                for pat in bp_data.get("patterns", [])[:5]:
+                    candidate = pat.replace("{clube}", kw).replace("{artista}", kw).replace("{game}", kw).replace("{nick}", kw).replace("{ano}", anos[-1])
+                    r = _try(candidate)
+                    if r:
+                        yield r
+
+    # ── Sports fan: city/club combos ─────────────────────────
+    city = normalize(profile.get("location_city", "")).replace(" ", "")
+    if city:
+        for club in db.get("behavioral_patterns", {}).get("sports_fan", {}).get("br_clubs", []):
+            cl = normalize(club)
+            for ano in anos[-3:]:  # last 3 years only to limit volume
+                r = _try(f"{cl}@{ano}")
+                if r:
+                    yield r
+
 
 
 # ── Generation ────────────────────────────────────────────────────────────────
@@ -638,6 +920,17 @@ def generate_from_profile(
     for kw in profile.get("keywords", []):
         add_words(kw)
 
+    # Religion tokens (church/group names as word tokens)
+    church = (profile.get("church_name") or "").strip()
+    if church:
+        add_words(church)
+    church_group = (profile.get("church_group") or "").strip()
+    if church_group:
+        add_words(church_group)
+    rel_custom = (profile.get("religion_custom") or "").strip()
+    if rel_custom:
+        add_words(rel_custom)
+
     # Special dates
     for sd in profile.get("special_dates", []):
         parsed = parse_date_input(sd)
@@ -653,9 +946,15 @@ def generate_from_profile(
     if include_specials:
         seps.extend(["&", "*", "(", ")", "+", "=", "~"])
 
-    # ── Emit all combinations ─────────────────────────────────
+    # ── Emit all token combinations ───────────────────────────
     yield from _emit_all(
         word_tokens, all_date_tokens,
         seps, effective_min, effective_max,
         with_spaces, seen,
     )
+
+    # ── Behavioral/religious patterns from JSON DB ────────────
+    if profile.get("use_behavior_patterns", True):
+        yield from _generate_from_behavior(
+            profile, seen, effective_min, effective_max,
+        )

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-wfh.py — WordList For Hacking v1.2.0
+wfh.py — WordList For Hacking v1.3.0
 
 Unified wordlist generation tool for pentest and red team operations.
 Supports: charset, pattern, profile, corp, phone, scrape, ocr, extract,
@@ -75,7 +75,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "1.2.0"
+VERSION = "1.3.0"
 
 _BANNER_ART = (
     " __          _______ _    _         \n"
@@ -89,7 +89,7 @@ BANNER = (
     f"\n{Fore.CYAN}{Style.BRIGHT}\n"
     + _BANNER_ART
     + f"\n  WordList For Hacking  v{VERSION}\n"
-    + "  Author: Andre Henrique (@mrhenrike)\n"
+    + "  Author: André Henrique (@mrhenrike)\n"
     + "  Unified wordlist generation for pentest & red team\n"
     + f"{Style.RESET_ALL}"
 )
