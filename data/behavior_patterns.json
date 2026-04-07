@@ -1,0 +1,540 @@
+{
+  "_meta": {
+    "description": "Offline behavioral and religious pattern database for wordlist generation.",
+    "author": "André Henrique (@mrhenrike)",
+    "version": "1.0.0",
+    "note": "All data sourced from public research, open religious texts, and password leak analysis."
+  },
+
+  "religions": {
+    "catholicism": {
+      "display": "Catholicism / Catholic",
+      "aliases": ["catholic","catholicism","romano","catolicismo","igreja católica","roman catholic"],
+      "keywords": [
+        "deus","jesus","cristo","maria","virgem","santos","ave","pai","espírito",
+        "espirito","santo","fé","fe","graça","graca","amor","paz","esperança",
+        "esperanca","bençao","bencao","benção","salve","louvado","glória","gloria",
+        "magnificat","hosana","ora","pater","noster","ave maria","amen","amém",
+        "adoração","adoracao","eucaristia","batismo","crisma","confissão","confissao",
+        "sagrado","coração","sagradocoracao","coracaoDeJesus","MariaDeNazare",
+        "vaticano","papa","bispo","padre","sacerdote","catequese","rosario","rosário"
+      ],
+      "phrases": [
+        "deusEAmor","deusEFiel","VivaJesus","VivaMariam","AveMariaCheiaDe",
+        "SantaMariaRogaPorNos","LouvadoSejaOSenhor","AMinhaVidaECristo",
+        "GloriaAoDeusPai","deusteama","jesusChristeLord","santissimaTridade",
+        "SaoJose","NossaSenhora","AparecidaMadre","FatimaPortugal"
+      ],
+      "verse_refs": [
+        "jo316","jn316","sl23","gen11","rom828","fil413",
+        "mt2819","lc121","ef28","sl911","is4031","jo1410"
+      ],
+      "common_titles": ["padre","monsenhor","bispo","cardeal","papa","diácono","diacono","irmão","irmao","irmã","irma","frade","freira","reverendo"],
+      "holy_names": [
+        "Jesus","Cristo","JesusCristo","Jeova","Jehovah","JoãoBatista","JoaoBatista",
+        "Maria","MariaVirgem","SantaTeresa","SãoFrancisco","SaoFrancisco","SãoJosé",
+        "SaoJose","SãoPedro","SaoPedro","SantAna","SantaAna","SantaLucia","SantoBenedito"
+      ],
+      "common_passwords": [
+        "Jesus123","Deus123","jesus@2024","deus@2024","Maria123","santos123",
+        "fe123","graca123","JesusSalva","SantaMariaProtegeMe","PadreNosso"
+      ]
+    },
+
+    "evangelical": {
+      "display": "Evangelical / Protestant",
+      "aliases": ["evangelical","evangelico","evangelica","protestant","assembleia","pentecostal","batista","metodista","presbiteriano","luterano","adventista"],
+      "keywords": [
+        "deus","jesus","cristo","espírito","espirito","santo","fé","fe","graça","graca",
+        "glória","gloria","aleluia","hallelujah","amém","amen","shalom","shalon",
+        "maranata","maranatha","sola","fide","gracia","louvores","adoração","adoracao",
+        "unção","uncao","avivamento","revival","profecia","prophecy","cura","milagre",
+        "renascido","born again","salvo","salvação","salvacao","arrependimento","batismo",
+        "fogo","espiritosanto","dons","frutos","evangelização","evangelizacao","missão"
+      ],
+      "phrases": [
+        "JesusSalva","DeusEFiel","DeusEAmor","EuAmoDeus","FaSobreVentoEMar",
+        "DeusNoControle","DeusEBom","SempreDeusEBom","FaithOverFear","GodIsGood",
+        "BlessedAndFavored","NaMinhaFraqueza","ForteEmCristo","GracaDeDeus",
+        "JesusNoCoracao","VivendoParaDeus","ADeusSejaAGlória","ADeusSejaAGloria",
+        "PoderDaOracao","OhSenhorMeuDeus","ImInGodHands","TrustInGod",
+        "todaMinhaforca","FortalecidoEmDeus","GuerreiroEmCristo"
+      ],
+      "verse_refs": [
+        "jo316","fl413","rm828","ef28","sl23","is4031","jr2911",
+        "hb111","mt625","lc610","jo1027","ap1211","1jo49","sl1212"
+      ],
+      "common_titles": ["pastor","pastora","evangelista","missionario","missionaria","presbítero","presbitero","diacono","líder","lider","obreiro","obreiro","profeta","apostolo","apostola","bishop","elder"],
+      "churches_br": [
+        "AssembleiadeDeus","AssDeus","AD","IURD","Universal","IgrejaSaraNossaTerra",
+        "Renascer","IgrejaBatista","IBatista","Metodista","IgrejaPentecostal",
+        "Presbiteriana","IPB","Adventista","IASD","Quadrangular","Nazareno",
+        "DeuseAmor","ComunidadeEvangélica","Hillsong","NewLife","PaxChristi"
+      ],
+      "holy_names": [
+        "Jesus","JesusCristo","Jeova","Jehovah","Yahweh","ElShaddai","Elohim",
+        "AdonaiSenhor","RuachHakodesh","EspiritoSanto"
+      ],
+      "common_passwords": [
+        "Jesus@123","Deus@2024","FeSalva1","GracaDeDeus","jesusvive","deusEfiel",
+        "AleluiaAmem","Hallelujah1","JesusNoCoracao","deus1234","jesus2024"
+      ]
+    },
+
+    "spiritism": {
+      "display": "Spiritism / Kardecism",
+      "aliases": ["spiritism","espiritismo","kardecismo","kardec","espirita","centro espírita"],
+      "keywords": [
+        "espírito","espirito","karma","reencarnação","reencarnacao","mediunidade",
+        "medium","caridade","chico","xavier","fraternal","amor","evolução","evolucao",
+        "ouvir","guia","luz","paz","verdade","ciência","ciencia","filosofia",
+        "doutrina","codificação","codificacao","mestre","espiritualidade","psicografia",
+        "passe","prece","obsessão","obsessao","desobsessão","desobsessao","apometria"
+      ],
+      "phrases": [
+        "FazerOBem","ForaQueNaoSeOuça","ForaSemQueSeSaiba","ChicoXavier",
+        "AmorELei","AmorELeiQuerGoverna","amorfraternitade","EvangelhoEspirita",
+        "PazELuz","ChicoVivaEspiritto","AllahIsGreat","KarmaKarma","VidaEterna",
+        "EvolucaoEspiritual","LuzDivina","PrestoASerDeuz"
+      ],
+      "verse_refs": ["codigos","livrodosespiritos","evangelho","genesis","apocalipse"],
+      "common_titles": ["medium","mediun","mentor","guia","mentor","instrutor","mestre","dirigente","paraninfo"],
+      "holy_names": [
+        "ChicoXavier","FranciscoXavier","AllanKardec","EmanuelGuia",
+        "JesusMestre","Andre","LuizGasparetto"
+      ],
+      "common_passwords": [
+        "chicoXavier","espiritismo1","kardec123","FazerOBem","pazeluzsempre",
+        "reencarnacao","karma2024","espiritasempre","AmorELei123"
+      ]
+    },
+
+    "umbanda_candomble": {
+      "display": "Umbanda / Candomblé / Afro-Brazilian",
+      "aliases": ["umbanda","candomble","candomblé","afro","orixá","orixa","terreiro","macumba"],
+      "keywords": [
+        "orixá","orixa","exu","pombagira","ogum","oxóssi","oxossi","oxum","iansã","iansa",
+        "xangô","xango","iemanjá","iemanja","oxalá","oxala","oxumaré","oxumare",
+        "nanã","nana","omolu","ossanha","iroko","logunedé","logunede","ewá","ewa",
+        "oya","yansa","yemoja","shango","obatala","elegba","eshu",
+        "axé","axe","saravá","sarava","padê","pade","gira","guia","preto velho",
+        "caboclo","erê","ere","pomba gira","zé pilintra","mãe","mae","pai",
+        "terreiro","terreiro de candomble","pai de santo","mae de santo"
+      ],
+      "phrases": [
+        "OgunsaraNosCaminhos","SaravaExu","SaravaOgum","OxalaForcaVida",
+        "IemanjaMaeDosMares","OxumRainhaDoAmor","ExuDaMeia","AxeAParaTodos",
+        "ForçaDoAxe","ForcaDoAxe","YanssaDerrubaMedos"
+      ],
+      "verse_refs": [],
+      "common_titles": ["pai de santo","mae de santo","filha de santo","filho de santo","ekedi","ogan","babalorixá","ialorixá","babaloxa","ialoxa"],
+      "holy_names": [
+        "Ogum","Oxóssi","Oxossi","Oxum","Iansã","Iansa","Xangô","Xango",
+        "Iemanjá","Iemanja","Oxalá","Oxala","Exu","PombáGira","PombaGira",
+        "Nanã","Nana","Omolu","PretaVelha","PretoVelho"
+      ],
+      "common_passwords": [
+        "sarava123","axe123","ogum123","iemanja2024","oxum@amor",
+        "terreiro123","orixá2024","orixa2024"
+      ]
+    },
+
+    "islam": {
+      "display": "Islam / Muslim",
+      "aliases": ["islam","muslim","islamismo","islã","isla","sunni","shia","sufi","muçulmano","muculmano"],
+      "keywords": [
+        "allah","muhammad","mohammed","quran","quran","koran","islã","isla",
+        "salat","zakat","sawm","hajj","jihad","iman","taqwa","halal","haram",
+        "inshallah","mashallah","alhamdulillah","subhanallah","bismillah",
+        "assalamualaikum","waalaikumsalam","ramadan","eid","mubarak",
+        "mosque","masjid","imam","sheikh","mufti","ayatollah","caliph",
+        "sunnah","hadith","sharia","fatima","aisha","ali","omar","osman",
+        "ibrahim","ismail","musa","isa","nabi","rasul","prophet"
+      ],
+      "phrases": [
+        "AllahAkbar","AllahuAkbar","Bismillah","Alhamdulillah","SubhanAllah",
+        "InshAllah","MashAllah","AstagfirAllah","LaIlahaIllAllah","AllahuAkbar123",
+        "IslamIsTheTruth","AllahIsGreat","ProphetMuhammad","QuranAndSunnah",
+        "FearOnlyAllah","TrustInAllah","AllahKareem"
+      ],
+      "verse_refs": [
+        "surah1","surah2","surah3","ayat255","ayatKursi","surahYaseen",
+        "surahFatiha","surahIkhlat","hadith1","sura112"
+      ],
+      "common_titles": ["imam","sheikh","mufti","ayatollah","caliph","mullah","hafiz","qari","alhaj","haji"],
+      "holy_names": [
+        "Allah","Muhammad","Mohammed","Ibrahim","Ismail","Musa","Isa","Nuh",
+        "Yusuf","Dawud","Sulayman","Idris","Adam","Fatima","Aisha","Khadijah",
+        "Ali","Omar","Uthman","AbuBakr","Hassan","Hussein"
+      ],
+      "common_passwords": [
+        "Allah123","Muhammad1","bismillah1","alhamdulillah","InshAllah2024",
+        "AllahAkbar1","islam2024","muslim123","quran2024","ramadan2024"
+      ]
+    },
+
+    "judaism": {
+      "display": "Judaism / Jewish",
+      "aliases": ["judaism","judaismo","jewish","judeu","judia","torah","talmud","sinagoga","shabbat"],
+      "keywords": [
+        "yahweh","adonai","elohim","hashem","shabbat","torah","talmud","mitzvah",
+        "shalom","mazaltov","mazel","pesach","rosh","hashanah","yom","kippur",
+        "hanukkah","purim","sukkot","passover","seder","kosher","kashrut",
+        "bris","bar mitzvah","bat mitzvah","rabbi","synagogue","menorah","mezuzah",
+        "tzedakah","teshuvah","kiddush","havdalah","chag","sameach","gemar","chatima","tova"
+      ],
+      "phrases": [
+        "ShalomAleikem","AdonaiElohenu","BaruchHaShem","LeShanahTovah",
+        "AmIsrael","KolIsrael","TorahIsLife","AmYisraelChai","ShemaIsrael",
+        "YHVHElohenu","EhyehAsherEhyeh","MazelTov2024","ShabatShalom"
+      ],
+      "verse_refs": [
+        "gen11","exo201","deut64","ps23","prov311","isa4031",
+        "jer2911","lev1918","num624","deut611"
+      ],
+      "common_titles": ["rabbi","rebbe","cantor","chazan","gabbai","hazzan","rosh","cohen","levi"],
+      "holy_names": [
+        "Yahweh","Adonai","Elohim","HaShem","Moses","Moshe","Aaron","Aharon",
+        "David","Solomon","Shlomo","Abraham","Isaac","Jacob","Sarah","Rebecca",
+        "Rachel","Leah","Miriam","Esther","Ruth","Elijah"
+      ],
+      "common_passwords": [
+        "Shalom123","Torah2024","shabbat123","mazelTov","adonai123",
+        "yahweh123","israel2024","kosher123","pesach2024","barMitzvah"
+      ]
+    },
+
+    "hinduism": {
+      "display": "Hinduism / Hindu",
+      "aliases": ["hinduism","hinduismo","hindu","brahmin","vaishnava","shaiva","shakta"],
+      "keywords": [
+        "brahma","vishnu","shiva","krishna","rama","lakshmi","durga","kali","ganesha",
+        "saraswati","hanuman","parvati","indra","agni","vayu","dharma","karma",
+        "moksha","samsara","avatar","atman","brahman","vedas","upanishads","bhagavad",
+        "gita","mantra","om","aum","namaste","namaskara","puja","pooja","diwali",
+        "holi","navratri","dussehra","janmashtami","makar","sankranti","yoga",
+        "ahimsa","satya","tapas","jnana","bhakti","shakti","tantra","chakra","kundalini"
+      ],
+      "phrases": [
+        "OmNamahShivaya","HareKrishna","JaiShriRam","OmShanti","Jai","Mata","Di",
+        "VandeMataram","BhaktiYoga","KarmaYoga","JnanaYoga","SatyaNarayana",
+        "JaiGanesh","GaneshaBhagwan","SrikrishnaGovinda","OmGam","OmManiPadmeHum"
+      ],
+      "verse_refs": [
+        "bgCh1","bgCh2","gita218","gita47","gita618","rig1189",
+        "upanishad1","vedanta1","gayatriMantra"
+      ],
+      "common_titles": ["swami","sadhu","brahmin","pandit","acharya","guru","rishi","maharishi","yogi","baba","mata","amma"],
+      "holy_names": [
+        "Brahma","Vishnu","Shiva","Krishna","Rama","Lakshmi","Durga","Kali",
+        "Ganesha","Saraswati","Hanuman","Parvati","Radha","Sita","Arjuna"
+      ],
+      "common_passwords": [
+        "om123","Krishna1","HareKrishna","shiva@123","ganesha123",
+        "namaste123","dharma2024","yoga123","diwali2024","JaiShriRam"
+      ]
+    },
+
+    "buddhism": {
+      "display": "Buddhism / Buddhist",
+      "aliases": ["buddhism","budismo","buddhist","budista","theravada","mahayana","zen","tibetan","vajrayana"],
+      "keywords": [
+        "buddha","dharma","sangha","nirvana","enlightenment","samsara","karma","dukkha",
+        "anicca","anatta","meditation","zen","bodhisattva","lotus","mandala","sutra",
+        "tripitaka","pali","tibetan","dalai","lama","monk","nun","bhikkhu","bhikkhuni",
+        "zazen","koan","prana","chakra","mudra","mantra","om","mala","beads",
+        "metta","loving kindness","compassion","impermanence","suffering","liberation"
+      ],
+      "phrases": [
+        "OmManiPadmeHum","BuddhaIsLight","DharmaWay","PeaceAndCompassion",
+        "NamoAmituofo","GateGateParaGate","SarvaMangalam","OmAhHum",
+        "TathagataIsHere","SouthernLotus","MayAllBeHappy","NamuAmidaButsu"
+      ],
+      "verse_refs": [
+        "dhammapada1","heartSutra","diamondSutra","mangalaSutta","mettaSutta"
+      ],
+      "common_titles": ["bhikkhu","bhikkhuni","lama","rinpoche","geshe","roshi","sensei","monk","abbess","abbot"],
+      "holy_names": [
+        "Gautama","Siddhartha","Amitabha","Avalokiteshvara","Maitreya",
+        "Manjushri","Tara","PadmasambhavaGuru","DalaiLama","Nagarjuna"
+      ],
+      "common_passwords": [
+        "buddha123","nirvana123","karma2024","dharma@1","zen123",
+        "omMani123","meditation","sangha123","lotus2024","buddhist1"
+      ]
+    },
+
+    "sikhism": {
+      "display": "Sikhism / Sikh",
+      "aliases": ["sikhism","sikhismo","sikh","punjabi","gurdwara","khalsa","guru"],
+      "keywords": [
+        "waheguru","satnam","gurdwara","khalsa","langar","kirtan","sewa","darbar",
+        "granth","sahib","guru","nanak","gobind","singh","kaur","panj","pyare",
+        "amrit","sanchaar","rehras","ardas","simran","naam","japji","nitnem",
+        "ik","onkar","turban","dastar","kara","kirpan","kanga","kachera","kesh"
+      ],
+      "phrases": [
+        "WaheGuru","SatNamWaheGuru","EkOnkar","SatNaam","SarbatDaBlhala",
+        "JoBoleySOnihal","SatSriAkal","WaheGuruJiKaKhalsa","BoleSoNihal"
+      ],
+      "verse_refs": ["japji1","sukhmani1","rehras1","anandSahib","ardas"],
+      "common_titles": ["guru","granth","granthi","panj pyare","sewadaar","bhai","bibi"],
+      "holy_names": [
+        "GuruNanak","GuruAngad","GuruAmardas","GuruRamdas","GuruArjan","GuruHarGobind",
+        "GuruHarRai","GuruHarKrishan","GuruTeghBahadur","GuruGobindSingh","GuruGranthSahib"
+      ],
+      "common_passwords": [
+        "waheguru1","Satnam123","khalsa2024","guruNanak","ek0nkar",
+        "sikhPride","amrit123","kirtanSewa","Waheguru@1"
+      ]
+    },
+
+    "atheism_agnosticism": {
+      "display": "Atheism / Agnosticism",
+      "aliases": ["atheism","ateismo","atheist","ateu","ateia","agnosticism","agnosticismo","agnostico","secular","freethinker"],
+      "keywords": [
+        "science","ciência","ciencia","reason","razão","razao","logic","lógica","logica",
+        "evolution","evolução","evolucao","darwin","einstein","hawking","sagan","dawkins",
+        "hitchens","bertrand","russell","nietzsche","freud","marx","secular","humanist",
+        "freethought","skeptic","rational","evidence","empiricism","naturalism"
+      ],
+      "phrases": [
+        "ScienceIsMyReligion","InReasonWeTrust","EvolutionIsTrue","GodIsNotGreat",
+        "FreeThought","RationalMind","LogicOverFaith","EvidenceBasedLife",
+        "SkepticForever","DarwinWasRight","ReasonAndLogic"
+      ],
+      "verse_refs": [],
+      "common_titles": ["dr","prof","professor","doutor","cientista","filósofo","filosofo","pensador"],
+      "holy_names": [],
+      "common_passwords": [
+        "science123","reason2024","darwin123","einstein@1","logic2024",
+        "atheist123","secular1","freethought"
+      ]
+    },
+
+    "wicca_paganism": {
+      "display": "Wicca / Paganism / New Age",
+      "aliases": ["wicca","wiccan","pagan","paganism","paganismo","neopagan","occult","druid","witch","witchcraft","new age"],
+      "keywords": [
+        "witch","wicca","pagan","druid","spell","ritual","coven","sabbat","esbat",
+        "pentacle","pentagram","moon","luna","sun","sol","earth","fire","water","air",
+        "goddess","horned god","hecate","diana","aradia","cerridwen","brigid","morrigan",
+        "beltane","samhain","ostara","litha","lughnasadh","imbolc","mabon","yule",
+        "triple goddess","maiden","mother","crone","blessed be","so mote it be","merry meet"
+      ],
+      "phrases": [
+        "BlessedBe","SoMoteItBe","MerryMeet","HarmNoneDoWhatYouWill",
+        "PowerOfThree","AnHarmItNone","ByMoonAndSun","AsAboveSoBelow",
+        "DivineFeminine","MotherEarth","TheCraft","WitchcraftIsMyPath"
+      ],
+      "verse_refs": [],
+      "common_titles": ["high priest","high priestess","elder","crone","maiden","the witch","the mage"],
+      "holy_names": [
+        "Hecate","Diana","Aradia","Cerridwen","Brigid","Morrigan","Isis","Osiris",
+        "Cernunnos","Pan","Lugh","Dagda","Freya","Odin","Thor","Aphrodite","Artemis"
+      ],
+      "common_passwords": [
+        "wicca123","blessedBe","pagan2024","moonMagic","witchcraft",
+        "goddess123","hecate123","samhain","pentagram1","druid2024"
+      ]
+    },
+
+    "seventh_day_adventist": {
+      "display": "Seventh-day Adventist / Adventista",
+      "aliases": ["adventist","adventista","iasd","seventh day","sabado","sabbath"],
+      "keywords": [
+        "sabado","sabbath","adventista","iasd","saude","saúde","natureza","temperança",
+        "temperanca","profecia","segunda vinda","daniel","apocalipse","revelação",
+        "revelacao","ellen white","millerismo","remanescente","remnant","sda",
+        "bíblia","biblia","sola scriptura","batismo","dízimo","dizimo","evangelho",
+        "missionário","missionario","evangelismo","saúde perfeita"
+      ],
+      "phrases": [
+        "SabadoEDiaDeSenhor","JesusVolta","EllenWhiteEscreve","BíbliaSolaScriptura",
+        "BibliaSolaScriptura","TemperancaESaude","MaranathaVemJesus",
+        "IASDSomos","AdventistasNoMundo","SegundaVindaJesus"
+      ],
+      "verse_refs": ["dn2","dn7","dn8","ap12","ap14","ap19","gn2","ex20","dn924","lc218"],
+      "common_titles": ["pastor","ancião","anciao","diácono","diacono","elder","missionário","missionaria","evangelista"],
+      "holy_names": ["Jesus","Deus","EspiritoSanto","EllenGWhite"],
+      "common_passwords": [
+        "sabado123","adventista","Maranatha1","IASD@2024","sabatista",
+        "saude2024","temperanca","biblia123","daniel812","ellenWhite"
+      ]
+    },
+
+    "jehovahs_witnesses": {
+      "display": "Jehovah's Witnesses / Testemunhas de Jeová",
+      "aliases": ["jehovahs witnesses","testemunhas de jeova","testemunhas","kingdom hall","salão do reino","watch tower","watchtower","jw","jw.org"],
+      "keywords": [
+        "jeová","jeova","jehovah","yhwh","salão","salon","reino","kingdom","bíblia","biblia",
+        "watchtower","atalaias","atalaia","publicação","publicacao","livro","estudo",
+        "pregação","pregacao","casa em casa","district","circuit","assembly","assembleia",
+        "armagedão","armagedao","paraíso","paraiso","ressureição","ressureicao",
+        "fidelidade","fiel","sábio","sábias","escravidão","liberdade","teocrático"
+      ],
+      "phrases": [
+        "JeováÉMinhaPedra","JeovaEMinhaPedra","ReinoDeJeová","ReinoDeJeova",
+        "SempreFielAJeova","WatchTowerMinistry","PregarBiblicamente",
+        "JehovahIsMyShepherd","ParaisoNaTerra","ArmagedaoVem"
+      ],
+      "verse_refs": ["sl83","jo17","ap211","mt244","jo1716","sl371","at1731","rm102"],
+      "common_titles": ["ancião","anciao","elder","servo ministerial","publicador","pioneiro"],
+      "holy_names": ["Jeová","Jeova","Jehovah","Jesus","Miguel","MiguelArcanjo"],
+      "common_passwords": [
+        "jeova123","Jehovah1","reino2024","salaoDoReino","watchtower",
+        "atalaia123","jehovaIsKing","paraiso2024","testemunha"
+      ]
+    },
+
+    "mormonism": {
+      "display": "Mormonism / Church of Jesus Christ of LDS",
+      "aliases": ["mormon","mormonism","lds","latter day saints","santos","joseph smith","brigham young"],
+      "keywords": [
+        "joseph","smith","brigham","young","lds","mormon","moroni","nephi","lehi",
+        "alma","helaman","ether","omni","mosiah","jacob","enos","jarom",
+        "bookofmormon","liahona","celestial","terrestrial","telestial","zion","elohim",
+        "priesthood","melchizedek","aaronic","bishop","stake","ward","mission","temple",
+        "endowment","sealing","tithing","fast","offering","testimony","conference"
+      ],
+      "phrases": [
+        "BookOfMormon","AnotherTestament","JosephSmithSaw","MoroniAngel",
+        "CelestialKingdom","FamiliesForever","LatterDaySaints","ChurchOfJesus",
+        "CTRChooseRight","FaithfulToCovenants"
+      ],
+      "verse_refs": ["bom1ni31","bom2ni9","bom3ne11","dc76","poc1"],
+      "common_titles": ["bishop","stake president","elder","sister","mission president","high priest"],
+      "holy_names": ["Joseph Smith","Brigham Young","Moroni","Jesus Christ","Heavenly Father","Elohim","Jehovah"],
+      "common_passwords": [
+        "joseph123","moroni2024","lds123","bookOfMormon","temples",
+        "CTRring","mission123","zion2024","brighamYoung","nephiLds"
+      ]
+    },
+
+    "pentecostal": {
+      "display": "Pentecostal / Charismatic",
+      "aliases": ["pentecostal","pentecostal","carismatico","charismatic","apostolic","fullgospel","iurd","universal","deus é amor","assembleia de deus"],
+      "keywords": [
+        "espírito","espirito","santo","holy spirit","glossolalia","línguas","linguas",
+        "tongues","cura","healing","milagre","miracle","profecia","prophecy","unção",
+        "uncao","anointing","fogo","fire","revival","avivamento","pentecostes","pentecost",
+        "salvo","saved","redenção","redencao","poder","power","clamor","intercession",
+        "guerra espiritual","spiritual warfare","dom","gift","dons"
+      ],
+      "phrases": [
+        "FogoDoPentecostes","AventoDoEspirito","ClamaPorAvivamento","GloriaAOSenhor",
+        "UnçãoDeDeus","UncaoDeDeus","DomDeLinguas","EspiritoVem","SangueDeJesus",
+        "PlenitudoDoEspirito","GuiaEspiritosanto","NomeDeJesus","JesusCuraAgora"
+      ],
+      "verse_refs": ["atos2","jo14","1co12","1co14","mc1617","lc2449","ez3726","jo716"],
+      "common_titles": ["pastor","pastora","apóstolo","apostolo","profeta","profetiza","evangelista","missionário","missionaria","bispo","presbitero","presbitera"],
+      "holy_names": ["Jesus","EspiritoSanto","Deus","Senhor"],
+      "common_passwords": [
+        "pentecostal1","fogo123","unção2024","uncao2024","espiritosanto",
+        "glossolalia","avivamento","nomeDeJesus","guerraEspiritual"
+      ]
+    }
+  },
+
+  "behavioral_patterns": {
+    "sports_fan": {
+      "keywords": ["futebol","football","soccer","nfl","nba","baseball","basquete","volleyball","tenis",
+                   "rugby","handebol","natacao","swimming","athletics","atletismo","mma","ufc","boxing","boxe"],
+      "br_clubs": ["Flamengo","Corinthians","Palmeiras","SaoPaulo","Gremio","Internacional","Cruzeiro",
+                   "Atletico","Botafogo","Vasco","Santos","Fluminense","FortalezaEC","CearaSC",
+                   "SportRecife","NauticoRecife","CRBMaceio","Bahia","Vitoria","AmericaMG"],
+      "patterns": ["{clube}@{ano}","{clube}#{ano}","{clube}1234","{clube}campeao",
+                   "ForcaDo{clube}","VamosO{clube}","NaçãoDo{clube}","Nacao{clube}"],
+      "suffixes": ["campeao","campeã","campeã2024","tri","hexa","pentacampeo","torcida","fiel","nacao"]
+    },
+    "music_lover": {
+      "keywords": ["musica","music","rock","pop","sertanejo","funk","pagode","samba","forró","forro",
+                   "gospel","country","hip hop","rap","eletronica","axe","baile funk","mpb"],
+      "patterns": ["{artista}123","{artista}@{ano}","viva{artista}","amo{musica}","{musica}Forever"]
+    },
+    "gamer": {
+      "keywords": ["game","gamer","gaming","player","steam","xbox","playstation","nintendo","pc",
+                   "fps","rpg","moba","mmorpg","minecraft","fortnite","lol","valorant","cs","csgo"],
+      "patterns": ["{game}123","{nick}@{ano}","pro{nick}","elite{nick}","{nick}gg",
+                   "{nick}666","{nick}777","{nick}pro","gamer{nick}","player{nick}"],
+      "suffixes": ["gg","pro","elite","master","1337","leet","noob","kek","pwned","rekt","clutch"]
+    },
+    "pet_lover": {
+      "patterns": ["{pet}@{ano}","{pet}1234","amo{pet}","{pet}querido","meu{pet}",
+                   "{pet}da{dono}","{pet}gatinho","{pet}fofo","{pet}lindinho"]
+    },
+    "professional": {
+      "patterns": ["{empresa}@{ano}","{empresa}#{ano}","{empresa}admin","{cargo}@{empresa}",
+                   "{cargo}2024","{empresa}user","{cargo}pass","{empresa}login",
+                   "admin@{empresa}","suporte@{empresa}"]
+    },
+    "political": {
+      "keywords": ["politica","politics","esquerda","direita","centro","left","right","liberal",
+                   "conservador","conservative","democracia","democracy","comunismo","socialism",
+                   "capitalismo","capitalism","fascismo","fascism"],
+      "br_patterns": [
+        "lula{ano}","bolsonaro{ano}","pt{ano}","pl{ano}","mdb{ano}","psol{ano}","pp{ano}",
+        "viravirada","lulalula","bolso{ano}","jair{ano}","direitaForte","esquerda{ano}",
+        "brasil{ano}","bozoBosta","lulaladrão","lulaladrao","fora{pessoa}",
+        "verdebrasil","amarelabrasil","semcorrupcao","anticorrupcao"
+      ]
+    },
+    "nationalist": {
+      "br_patterns": [
+        "brasil{ano}","verde@amarelo","verde@amarelo{ano}","pátria@amada","patria@amada",
+        "ordem@progresso","bandeira{ano}","verde{ano}","amarelo{ano}","azul{ano}",
+        "branco{ano}","brasilacima","brasilgrande","vivaobrasil","brasilSeculo21"
+      ]
+    }
+  },
+
+  "common_password_behaviors": {
+    "birthday_based": {
+      "note": "Highly common: birth date as part of password",
+      "patterns": ["{name}{day}{month}{year}","{name}{ddmmyyyy}","{year}{name}",
+                   "{name}@{year}","{name}#{year}","{name}{year}!",
+                   "{name}{last2digits_year}","{day}{month}@{name}"]
+    },
+    "name_based": {
+      "patterns": ["{name}123","{name}1234","{name}12345","{name}!","{name}@",
+                   "{name}#{year}","{name}@{year}","My{name}","I{name}","{name}Master",
+                   "{name}Admin","{name}User","{name}Pass","{name}{special}"]
+    },
+    "keyboard_walk": {
+      "sequences": ["qwerty","asdfgh","zxcvbn","1qaz2wsx","qazwsx","1q2w3e4r",
+                    "qweasdzxc","123qwe","1q2w3e","abcdef","abc123","zaq1xsw2",
+                    "1qazxsw2","qaz2wsx","123asd","asd123"]
+    },
+    "number_suffix": {
+      "common": ["1","12","123","1234","12345","123456","1234567","12345678",
+                 "0","01","001","007","69","99","100","00","000","111","222","333",
+                 "444","555","666","777","888","999","2020","2021","2022","2023","2024","2025","2026"]
+    },
+    "special_suffix": {
+      "common": ["!","@","#","$","%","&","*","!@","@#","#$","!@#","@#$","!123","@123","!1"]
+    }
+  },
+
+  "cultural_phrases_br": {
+    "popular": [
+      "fariglo","cocodegrilo","foraboso","bolsominium","nãosãosó20centavos","naosao20centavos",
+      "ogiganteacordou","omelhorproduto","fazol","fazole","faz-o-l","placapreta","misogino",
+      "pedalarobinho","jaacabouJessica","jaacaboujessica","tomaTomaVapoVapo","tomaVapoVapo",
+      "creu","creucreuCreu","lulaladrao","lulaladrão","fora","sabeDaNadaInocente",
+      "olhaExplosao","bumBumTamTam","jenifer","atrasadinha","liberdadeProvisoria",
+      "malvadao3","malFéito","malfeito","envolverAnitta","acordaPedrinho",
+      "dancarinaFunkeira","tomaToma","zoneDePerigo","deixeMeIr",
+      "erroGostoso","bombonzinho","leao","nossoQuadro"
+    ],
+    "political_phrases": [
+      "lulaladrao","lulaladrão","brasilacimadettudo","mito","bozo","bolsolixo",
+      "ptnaoconta","direitalivrebrasil","esquerdalivrebrasil","democracia","golpe",
+      "14nov","5jan","8jan","impichmentjá","impeachmentja","foracorrupcao"
+    ],
+    "religious_phrases_br": [
+      "deusEfiel","deusEbom","jesussalva","graçaDeDeus","gracaDeDeus",
+      "espiritoSanto","aleluia","Maranata","fogoDoEspirito","nomeDeJesus",
+      "sangueDeJesus","missericordiaDeJesus","louvadoSeja","gloriaDeDeus"
+    ]
+  }
+}
