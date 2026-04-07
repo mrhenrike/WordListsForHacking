@@ -1,0 +1,9 @@
+include LICENSE
+include README.md
+include README.pt-BR.md
+include requirements.txt
+include SECURITY.md
+include CONTRIBUTING.md
+include CODE_OF_CONDUCT.md
+recursive-include data *.json
+recursive-include wfh_modules *.py *.json

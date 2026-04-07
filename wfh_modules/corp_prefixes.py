@@ -18,6 +18,7 @@ Examples generated:
 Author: André Henrique (@mrhenrike)
 Version: 1.0.0
 """
+from __future__ import annotations
 
 import json
 import logging
@@ -30,7 +31,19 @@ logger = logging.getLogger(__name__)
 
 # ── Config loading ─────────────────────────────────────────────────────────────
 
-_DEFAULT_CONFIG_PATH = Path(__file__).parent.parent / "data" / "corp_prefix_patterns.json"
+_MODULE_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _MODULE_DIR.parent
+
+
+def _resolve_config_path() -> Path:
+    """Resolve corp_prefix_patterns.json checking package data first, then repo root."""
+    pkg_path = _MODULE_DIR / "data" / "corp_prefix_patterns.json"
+    if pkg_path.exists():
+        return pkg_path
+    return _REPO_ROOT / "data" / "corp_prefix_patterns.json"
+
+
+_DEFAULT_CONFIG_PATH = _resolve_config_path()
 _CONFIG_CACHE: Optional[dict] = None
 
 

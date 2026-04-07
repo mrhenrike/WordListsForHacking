@@ -20,6 +20,7 @@ by learned probability — it does NOT reproduce training samples.
 Author: André Henrique (@mrhenrike)
 Version: 1.0.0
 """
+from __future__ import annotations
 
 import csv
 import json

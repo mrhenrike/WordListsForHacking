@@ -11,6 +11,7 @@ Referência: C code permutation engine (GeekUniao), CUPP 1337 mode.
 Autor: André Henrique (@mrhenrike)
 Versão: 1.0.0
 """
+from __future__ import annotations
 
 import logging
 from itertools import product

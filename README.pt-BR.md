@@ -12,10 +12,11 @@
 <h1 align="center">WordListsForHacking</h1>
 
 <p align="center">
-  <a href="https://github.com/mrhenrike/WordListsForHacking/releases"><img src="https://img.shields.io/badge/version-2.0.0-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/mrhenrike/WordListsForHacking/releases"><img src="https://img.shields.io/badge/version-2.1.0-blue?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.8%2B-yellow?style=flat-square" alt="Python"></a>
-  <a href="https://github.com/mrhenrike/WordListsForHacking"><img src="https://img.shields.io/badge/platform-linux%20%7C%20windows%20%7C%20macos-lightgrey?style=flat-square" alt="Platform"></a>
+  <a href="https://github.com/mrhenrike/WordListsForHacking"><img src="https://img.shields.io/badge/platform-linux%20%7C%20windows%20%7C%20macos%20%7C%20termux-lightgrey?style=flat-square" alt="Platform"></a>
+  <a href="https://pypi.org/project/wfh-wordlist/"><img src="https://img.shields.io/pypi/v/wfh-wordlist?style=flat-square&logo=pypi&logoColor=white&color=green" alt="PyPI"></a>
 </p>
 
 <p align="center">
@@ -29,7 +30,7 @@
 ---
 
 > **Autor:** André Henrique ([@mrhenrike](https://github.com/mrhenrike))  
-> **Versão:** 1.7.0 · **Licença:** MIT · **Python:** 3.8+
+> **Versão:** 2.1.0 · **Licença:** MIT · **Python:** 3.8+
 
 ---
 
@@ -85,39 +86,77 @@
 
 ## Quick Start
 
+### Opção A — Instalar via pip (recomendado)
+
 ```bash
-# 1. Clonar o repositório
+pip install wfh-wordlist
+```
+
+Com extras opcionais:
+
+```bash
+pip install wfh-wordlist[full]    # todas as dependências opcionais (OCR, parsing de documentos)
+pip install wfh-wordlist[docs]    # apenas parsing de PDF/XLSX/DOCX
+pip install wfh-wordlist[ocr]     # apenas extração OCR de imagens
+```
+
+Após instalação, o comando `wfh` fica disponível globalmente:
+
+```bash
+wfh --help
+wfh charset -h
+```
+
+### Opção B — Clonar do repositório
+
+```bash
 git clone https://github.com/mrhenrike/WordListsForHacking.git
 cd WordListsForHacking
-
-# 2. Criar e ativar ambiente virtual
-python -m venv .venv
-
-# Linux / macOS
-source .venv/bin/activate
-
-# Windows PowerShell
-.\.venv\Scripts\Activate.ps1
-
-# 3. Instalar dependências
-pip install -r requirements.txt
-
-# 4. Executar (menu interativo)
-python wfh.py
-
-# 4a. Executar subcomando direto
-python wfh.py charset 6 8 abc123 -o generated/charset.lst
 ```
 
-Alternativamente, utilize os scripts de setup automatizado:
+**Linux / macOS / Termux (Android):**
 
 ```bash
-# Linux / macOS
-chmod +x setup_venv.sh && ./setup_venv.sh
-
-# Windows PowerShell
-.\setup_venv.ps1
+chmod +x setup_venv.sh
+./setup_venv.sh
+source .venv/bin/activate
 ```
+
+**Windows (PowerShell):**
+
+```powershell
+.\setup_venv.ps1
+.\.venv\Scripts\Activate.ps1
+```
+
+Ou instale manualmente:
+
+```bash
+pip install -r requirements.txt
+```
+
+### Executar
+
+```bash
+wfh                        # menu interativo (instalado via pip)
+python wfh.py              # menu interativo (do código-fonte)
+python wfh.py --help       # ajuda completa da CLI
+python wfh.py charset -h   # ajuda de um subcomando específico
+```
+
+### Pré-requisitos por Sistema Operacional
+
+| Plataforma | Python | Pacotes adicionais |
+|------------|--------|--------------------|
+| **Windows 10/11** | [python.org](https://python.org) ou `winget install Python.Python.3.12` | Para OCR: `winget install UB-Mannheim.TesseractOCR` |
+| **Ubuntu/Debian** | `sudo apt install python3 python3-pip python3-venv` | `sudo apt install libxml2-dev libxslt1-dev tesseract-ocr` |
+| **Fedora/RHEL** | `sudo dnf install python3 python3-pip` | `sudo dnf install libxml2-devel libxslt-devel tesseract` |
+| **Arch Linux** | `sudo pacman -S python python-pip` | `sudo pacman -S libxml2 libxslt tesseract` |
+| **macOS** | `brew install python3` | `brew install tesseract` |
+| **Android (Termux)** | `pkg install python` | `pkg install clang libxml2 libxslt libjpeg-turbo libpng` |
+| **Alpine** | `apk add python3 py3-pip` | `apk add libxml2-dev libxslt-dev tesseract-ocr` |
+
+> **Nota:** OCR e Tesseract são necessários apenas se você usar o subcomando `ocr`. A funcionalidade principal funciona sem eles.
 
 ---
 
@@ -139,39 +178,42 @@ WordListsForHacking/
 │
 ├── generated/                   # Saída do wfh.py (gitignored)
 │
-├── wfh.py                       # CLI unificada de geração (v1.7.0)
-├── wfh_modules/                 # Módulos do wfh.py
-│   ├── charset_gen.py           # Geração por charset, máscara e composição
-│   ├── pattern_engine.py        # Templates com variáveis
-│   ├── profiler.py              # Profiling pessoal (estilo CUPP)
-│   ├── corp_profiler.py         # Profiling corporativo
-│   ├── domain_users.py          # Geração de users/senhas corporativos
-│   ├── phone_gen.py             # Geração de wordlists de telefone
-│   ├── web_scraper.py           # Web scraping (estilo CeWL)
-│   ├── ocr_extractor.py         # Extração OCR
-│   ├── file_extractor.py        # Extração de PDF/XLSX/DOCX
-│   ├── leet_permuter.py         # Variações leet speak
-│   ├── xor_crypto.py            # XOR criptografia/brute-force
+├── wfh.py                       # CLI unificada de geração (v2.1.0)
+├── wfh_modules/                 # Módulos do wfh.py (22 módulos)
 │   ├── analyzer.py              # Análise estatística (estilo pipal)
-│   ├── merger.py                # Merge e deduplicação
-│   ├── dns_wordlist.py          # DNS/subdomain fuzzing
-│   ├── sanitizer.py             # Limpeza e normalização
-│   ├── corp_prefixes.py         # Prefixos corporativos
-│   ├── ml_patterns.py           # Modelo ML de padrões
-│   ├── thread_pool.py           # Pool de threads paralelo
+│   ├── charset_gen.py           # Geração por charset, máscara e composição
 │   ├── compute_backend.py       # Backend de computação (CPU/GPU)
+│   ├── corp_prefixes.py         # Prefixos corporativos
+│   ├── corp_profiler.py         # Profiling corporativo
+│   ├── dns_wordlist.py          # DNS/subdomain fuzzing
+│   ├── domain_users.py          # Geração de users/senhas corporativos
+│   ├── file_extractor.py        # Extração de PDF/XLSX/DOCX
 │   ├── hw_profiler.py           # Detecção de hardware
-│   └── linkedin_search.py       # Busca online de funcionários
+│   ├── leet_permuter.py         # Variações leet speak
+│   ├── linkedin_search.py       # Busca online de funcionários
+│   ├── mangler.py               # Mangling estilo hashcat/John
+│   ├── merger.py                # Merge e deduplicação
+│   ├── ml_patterns.py           # Modelo ML de padrões
+│   ├── ocr_extractor.py         # Extração OCR
+│   ├── pattern_engine.py        # Templates com variáveis
+│   ├── phone_gen.py             # Geração de wordlists de telefone
+│   ├── profiler.py              # Profiling pessoal (estilo CUPP)
+│   ├── sanitizer.py             # Limpeza e normalização
+│   ├── thread_pool.py           # Pool de threads paralelo
+│   ├── web_scraper.py           # Web scraping (estilo CeWL)
+│   └── xor_crypto.py            # XOR criptografia/brute-force
 │
 ├── data/                        # Dados estáticos para geração
-│   ├── corp_prefix_patterns.json   # Padrões de prefixos corporativos
-│   └── behavior_patterns.json      # Padrões comportamentais
+│   ├── corp_prefix_patterns.json   # Padrões de prefixos corporativos (intl)
+│   └── behavior_patterns.json      # Padrões comportamentais (intl)
 │
-├── .model/                      # Modelo ML treinado
+├── .model/                      # Modelo ML treinado (gitignored)
 │   └── pattern_model.json       # Pesos estatísticos (sem PII)
 │
-├── requirements.txt             # Dependências Python
-├── setup_venv.sh                # Setup automatizado (Linux/macOS)
+├── pyproject.toml               # Config de empacotamento PyPI
+├── MANIFEST.in                  # Regras de inclusão para sdist
+├── requirements.txt             # Dependências core + opcionais
+├── setup_venv.sh                # Setup automatizado (Linux/macOS/Termux)
 ├── setup_venv.ps1               # Setup automatizado (Windows)
 ├── update_wordlists.py          # Script de consolidação de wordlists
 ├── CONTRIBUTING.md              # Guia de contribuição

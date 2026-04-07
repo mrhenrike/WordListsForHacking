@@ -3,8 +3,9 @@
 <p align="center">
   <img src="https://img.shields.io/github/stars/mrhenrike/WordListsForHacking?style=flat-square" alt="GitHub Stars">
   <img src="https://img.shields.io/github/license/mrhenrike/WordListsForHacking?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/version-2.0.0-blue?style=flat-square" alt="Version">
-  <img src="https://img.shields.io/badge/python-3.10%2B-blue?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+">
+  <img src="https://img.shields.io/badge/version-2.1.0-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/python-3.8%2B-blue?style=flat-square&logo=python&logoColor=white" alt="Python 3.8+">
+  <img src="https://img.shields.io/pypi/v/wfh-wordlist?style=flat-square&logo=pypi&logoColor=white&color=green" alt="PyPI">
 </p>
 
 **Unified wordlist generation toolkit for pentest and red team operations.** Combines charset generation, target profiling, web scraping, OCR extraction, leet speak permutation, DNS fuzzing, phone number generation, corporate domain user enumeration, ML-based ranking, and statistical analysis — all in a single CLI tool.
@@ -61,16 +62,35 @@ This is **not** a fork of CUPP, Crunch, CeWL, or any other tool. It is an origin
 
 ## Quick Start
 
-### Clone
+### Option A — Install via pip (recommended)
+
+```bash
+pip install wfh-wordlist
+```
+
+With optional extras:
+
+```bash
+pip install wfh-wordlist[full]    # all optional deps (OCR, document parsing)
+pip install wfh-wordlist[docs]    # PDF/XLSX/DOCX parsing only
+pip install wfh-wordlist[ocr]     # OCR/image text extraction only
+```
+
+After installation, the `wfh` command is available globally:
+
+```bash
+wfh --help
+wfh charset -h
+```
+
+### Option B — Clone from source
 
 ```bash
 git clone https://github.com/mrhenrike/WordListsForHacking.git
 cd WordListsForHacking
 ```
 
-### Virtual Environment (recommended)
-
-**Linux / macOS:**
+**Linux / macOS / Termux (Android):**
 
 ```bash
 chmod +x setup_venv.sh
@@ -85,7 +105,7 @@ source .venv/bin/activate
 .\.venv\Scripts\Activate.ps1
 ```
 
-### Install Dependencies
+Or install manually:
 
 ```bash
 pip install -r requirements.txt
@@ -94,10 +114,25 @@ pip install -r requirements.txt
 ### Run
 
 ```bash
-python wfh.py              # interactive menu
+wfh                        # interactive menu (if installed via pip)
+python wfh.py              # interactive menu (from source)
 python wfh.py --help       # full CLI help
 python wfh.py charset -h   # help for a specific subcommand
 ```
+
+### OS Prerequisites
+
+| Platform | Python | Extra packages |
+|----------|--------|----------------|
+| **Windows 10/11** | [python.org](https://python.org) or `winget install Python.Python.3.12` | For OCR: `winget install UB-Mannheim.TesseractOCR` |
+| **Ubuntu/Debian** | `sudo apt install python3 python3-pip python3-venv` | `sudo apt install libxml2-dev libxslt1-dev tesseract-ocr` |
+| **Fedora/RHEL** | `sudo dnf install python3 python3-pip` | `sudo dnf install libxml2-devel libxslt-devel tesseract` |
+| **Arch Linux** | `sudo pacman -S python python-pip` | `sudo pacman -S libxml2 libxslt tesseract` |
+| **macOS** | `brew install python3` | `brew install tesseract` |
+| **Android (Termux)** | `pkg install python` | `pkg install clang libxml2 libxslt libjpeg-turbo libpng` |
+| **Alpine** | `apk add python3 py3-pip` | `apk add libxml2-dev libxslt-dev tesseract-ocr` |
+
+> **Note:** OCR and Tesseract are only needed if you use the `ocr` subcommand. Core functionality works without them.
 
 ---
 
@@ -117,7 +152,7 @@ WordListsForHacking/
 ├── data/
 │   ├── behavior_patterns.json     # Behavioral patterns (religious, cultural, industry)
 │   └── corp_prefix_patterns.json  # Corporate prefix patterns (MSP/MSSP/SOC/DevOps/etc)
-├── wfh.py                         # Main CLI tool (v2.0.0)
+├── wfh.py                         # Main CLI tool (v2.1.0)
 ├── wfh_modules/                   # Python modules (22 modules)
 │   ├── analyzer.py                # Statistical wordlist analysis
 │   ├── charset_gen.py             # Charset generation (crunch-style + hashcat masks)
@@ -142,8 +177,11 @@ WordListsForHacking/
 │   ├── web_scraper.py             # Web scraping (CeWL-style)
 │   └── xor_crypto.py              # XOR crypto utilities
 ├── .model/                        # ML trained model (gitignored)
-├── requirements.txt
-├── setup_venv.sh / setup_venv.ps1
+├── pyproject.toml                 # PyPI packaging config (pip install wfh-wordlist)
+├── MANIFEST.in                    # sdist include rules
+├── requirements.txt               # Core + optional dependencies
+├── setup_venv.sh                  # Linux/macOS/Termux setup script
+├── setup_venv.ps1                 # Windows PowerShell setup script
 └── update_wordlists.py
 ```
 

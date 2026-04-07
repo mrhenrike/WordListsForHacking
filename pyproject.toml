@@ -1,0 +1,85 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wfh-wordlist"
+version = "2.1.0"
+description = "WordList For Hacking — Unified wordlist generation toolkit for pentest and red team operations"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.8"
+authors = [
+    {name = "André Henrique", email = "contact@safelabs.com.br"},
+]
+maintainers = [
+    {name = "André Henrique", email = "contact@safelabs.com.br"},
+]
+keywords = [
+    "wordlist", "password", "pentest", "red-team", "security",
+    "brute-force", "dictionary", "hacking", "cybersecurity",
+    "osint", "credential", "offensive-security",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Console",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: System Administrators",
+    "Operating System :: OS Independent",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "colorama>=0.4.6",
+    "tqdm>=4.66.0",
+    "requests>=2.31.0",
+    "beautifulsoup4>=4.12.0",
+    "lxml>=4.9.0",
+    "chardet>=5.2.0",
+    "unidecode>=1.3.6",
+]
+
+[project.optional-dependencies]
+ocr = [
+    "easyocr>=1.7.0",
+    "Pillow>=10.0.0",
+]
+docs = [
+    "openpyxl>=3.1.0",
+    "pdfplumber>=0.10.0",
+    "python-docx>=1.1.0",
+    "striprtf>=0.0.26",
+]
+full = [
+    "wfh-wordlist[ocr,docs]",
+]
+
+[project.urls]
+Homepage = "https://github.com/mrhenrike/WordListsForHacking"
+Documentation = "https://github.com/mrhenrike/WordListsForHacking/wiki"
+Repository = "https://github.com/mrhenrike/WordListsForHacking"
+Issues = "https://github.com/mrhenrike/WordListsForHacking/issues"
+Changelog = "https://github.com/mrhenrike/WordListsForHacking/releases"
+
+[project.scripts]
+wfh = "wfh:main"
+
+[tool.setuptools]
+py-modules = ["wfh"]
+
+[tool.setuptools.packages.find]
+include = ["wfh_modules*"]
+
+[tool.setuptools.package-data]
+"wfh_modules" = ["data/*.json"]
