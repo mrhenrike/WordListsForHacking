@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-wfh.py — WordList For Hacking v1.3.0
+wfh.py — WordList For Hacking v1.4.0
 
 Unified wordlist generation tool for pentest and red team operations.
 Supports: charset, pattern, profile, corp, phone, scrape, ocr, extract,
@@ -75,7 +75,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 
 _BANNER_ART = (
     " __          _______ _    _         \n"
@@ -225,12 +225,51 @@ def cmd_charset(args: argparse.Namespace) -> None:
     from wfh_modules.charset_gen import (
         get_charset, generate_by_charset, generate_by_pattern,
         estimate_size, create_charset_wizard, PLACEHOLDER_MAP,
+        generate_by_mask, estimate_mask_size,
+        generate_constrained, estimate_constrained_size,
     )
 
     if args.create_charset:
         create_charset_wizard(args.create_charset)
         return
 
+    # ── Hashcat-style mask (?u?l?d?s?a) ──────────────────────
+    if getattr(args, "mask", None):
+        total, size = estimate_mask_size(args.mask, getattr(args, "custom_charset1", None))
+        _info(f"Mask: {args.mask} | Estimated: {total:,} entries ~ {size}")
+        if not _confirm_large(total):
+            _warn("Operation cancelled.")
+            return
+        gen = generate_by_mask(args.mask, getattr(args, "custom_charset1", None))
+        count = _write_output(gen, args.output, estimate=total)
+        _ok(f"Generated: {count:,} entries")
+        return
+
+    # ── Constrained composition (--digits N --lower M --upper K --special P) ─
+    n_digits = getattr(args, "n_digits", 0) or 0
+    n_lower = getattr(args, "n_lower", 0) or 0
+    n_upper = getattr(args, "n_upper", 0) or 0
+    n_special = getattr(args, "n_special", 0) or 0
+    if any([n_digits, n_lower, n_upper, n_special]):
+        length = args.min_len  # for constrained mode use min_len as fixed length
+        total, size = estimate_constrained_size(length, n_digits, n_lower, n_upper, n_special)
+        _info(
+            f"Constrained: len={length} | digits={n_digits} lower={n_lower} "
+            f"upper={n_upper} special={n_special} | Est: {total:,} ~ {size}"
+        )
+        if not _confirm_large(total):
+            _warn("Operation cancelled.")
+            return
+        try:
+            gen = generate_constrained(length, n_digits, n_lower, n_upper, n_special)
+        except ValueError as exc:
+            _err(str(exc))
+            return
+        count = _write_output(gen, args.output, estimate=total)
+        _ok(f"Generated: {count:,} entries")
+        return
+
+    # ── Crunch-style pattern (@,%,^) ──────────────────────────
     if args.pattern:
         _info(f"Generating by pattern: {args.pattern}")
         gen = generate_by_pattern(
@@ -242,6 +281,7 @@ def cmd_charset(args: argparse.Namespace) -> None:
         _ok(f"Generated: {count:,} entries")
         return
 
+    # ── Standard charset generation ───────────────────────────
     charset_str = get_charset(args.charset or "lalpha", args.charset_file)
     total, size = estimate_size(len(charset_str), args.min_len, args.max_len)
     _info(f"Charset: {len(charset_str)} chars | {args.min_len}..{args.max_len} | "
@@ -285,7 +325,16 @@ def cmd_profile(args: argparse.Namespace) -> None:
     """Handler for personal profiling mode."""
     from wfh_modules.profiler import interactive_profile, generate_from_profile
 
-    if hasattr(args, "name") and args.name:
+    # ── Load from YAML file ──────────────────────────────────────────────────
+    if getattr(args, "profile_file", None):
+        from wfh_modules.profiler import load_profile_yaml
+        try:
+            profile = load_profile_yaml(args.profile_file)
+            _info(f"Profile loaded from: {args.profile_file}")
+        except (FileNotFoundError, ImportError) as exc:
+            _err(str(exc))
+            return
+    elif hasattr(args, "name") and args.name:
         from wfh_modules.profiler import parse_date_input
         birth_parsed = parse_date_input(getattr(args, "birth", "") or "") or (0, 0, 0)
         profile = {
@@ -315,6 +364,20 @@ def cmd_profile(args: argparse.Namespace) -> None:
             profile["nicknames"] = [args.nick]
     else:
         profile = interactive_profile()
+
+    # ── Inject year-range / suffix-range from CLI ────────────────────────────
+    if getattr(args, "year_start", None) and getattr(args, "year_end", None):
+        profile["year_start"] = args.year_start
+        profile["year_end"] = args.year_end
+    if getattr(args, "suffix_range", None):
+        try:
+            parts = args.suffix_range.split("-")
+            profile["suffix_range_start"] = int(parts[0])
+            profile["suffix_range_end"] = int(parts[1])
+            # Auto-detect zero-pad from format (e.g. "00-99" → pad 2)
+            profile["suffix_range_zero_pad"] = len(parts[0]) if parts[0].startswith("0") else 0
+        except (ValueError, IndexError):
+            _warn(f"Invalid --suffix-range format '{args.suffix_range}', expected START-END (e.g. 00-99)")
 
     leet_mode = getattr(args, "leet", "basic") or profile.get("leet_mode", "basic")
     _info(f"Generating wordlist from profile [leet={leet_mode}]...")
@@ -369,12 +432,33 @@ def cmd_phone(args: argparse.Namespace) -> None:
 
 def cmd_scrape(args: argparse.Namespace) -> None:
     """Handler for web scraping mode."""
-    from wfh_modules.web_scraper import WebScraper
+    from wfh_modules.web_scraper import WebScraper, DEFAULT_STOPWORDS
 
     auth = None
     if args.auth:
         parts = args.auth.split(":", 1)
         auth = (parts[0], parts[1]) if len(parts) == 2 else None
+
+    # Parse extra headers (--header "Name: Value")
+    extra_headers: dict[str, str] = {}
+    for hdr in (getattr(args, "headers", None) or []):
+        if ":" in hdr:
+            k, v = hdr.split(":", 1)
+            extra_headers[k.strip()] = v.strip()
+
+    # Stop-words
+    stopwords = frozenset()
+    if getattr(args, "no_stopwords", False):
+        stopwords = DEFAULT_STOPWORDS
+    stopwords_file = getattr(args, "stopwords_file", None)
+    if stopwords_file:
+        try:
+            with open(stopwords_file, encoding="utf-8") as f:
+                custom_sw = frozenset(line.strip().lower() for line in f if line.strip())
+            stopwords = stopwords | custom_sw
+            _info(f"Loaded {len(custom_sw)} custom stop-words from {stopwords_file}")
+        except FileNotFoundError:
+            _warn(f"Stop-words file not found: {stopwords_file}")
 
     scraper = WebScraper(
         start_url=args.url,
@@ -385,8 +469,14 @@ def cmd_scrape(args: argparse.Namespace) -> None:
         extract_meta=args.meta,
         auth=auth,
         delay=args.delay,
+        user_agent=getattr(args, "user_agent", None),
+        proxy=getattr(args, "proxy", None),
+        extra_headers=extra_headers or None,
+        stopwords=stopwords if stopwords else None,
     )
     _info(f"Crawling: {args.url} [depth={args.depth}]")
+    if getattr(args, "proxy", None):
+        _info(f"Proxy: {args.proxy}")
     count = _write_output(scraper.crawl(), args.output)
     _ok(f"Extracted: {count:,} words")
 
@@ -464,7 +554,12 @@ def cmd_xor(args: argparse.Namespace) -> None:
 
 def cmd_analyze(args: argparse.Namespace) -> None:
     """Handler for wordlist analysis."""
-    from wfh_modules.analyzer import analyze_wordlist, format_report
+    from wfh_modules.analyzer import (
+        analyze_wordlist, format_report,
+        analyze_masks, format_mask_report,
+        export_stats_json, export_stats_csv,
+        extract_base_words,
+    )
 
     _info(f"Analyzing: {args.wordlist}")
     try:
@@ -473,12 +568,63 @@ def cmd_analyze(args: argparse.Namespace) -> None:
         _err(str(e))
         return
 
-    report = format_report(metrics, args.wordlist)
-    print(report)
+    mask_data: Optional[dict] = None
+    do_masks = getattr(args, "masks", False)
+    if do_masks:
+        _info("Running Hashcat mask analysis...")
+        try:
+            mask_data = analyze_masks(args.wordlist, top_n=args.top)
+        except Exception as exc:
+            _warn(f"Mask analysis failed: {exc}")
 
-    if args.output:
-        Path(args.output).write_text(report, encoding="utf-8")
-        _ok(f"Report saved to: {args.output}")
+    do_base = getattr(args, "base_words", False)
+    base_output = getattr(args, "base_output", None)
+
+    # ── Output format ──────────────────────────────────────────
+    fmt = getattr(args, "format", "text") or "text"
+
+    if fmt == "json":
+        content = export_stats_json(metrics, args.wordlist, mask_data)
+        print(content)
+        if args.output:
+            Path(args.output).write_text(content, encoding="utf-8")
+            _ok(f"JSON report saved to: {args.output}")
+    elif fmt == "csv":
+        content = export_stats_csv(metrics, mask_data)
+        print(content)
+        if args.output:
+            Path(args.output).write_text(content, encoding="utf-8")
+            _ok(f"CSV report saved to: {args.output}")
+    else:
+        report = format_report(metrics, args.wordlist)
+        print(report)
+        if mask_data:
+            print(format_mask_report(mask_data))
+        if args.output:
+            out_parts = [report]
+            if mask_data:
+                out_parts.append(format_mask_report(mask_data))
+            Path(args.output).write_text("\n".join(out_parts), encoding="utf-8")
+            _ok(f"Report saved to: {args.output}")
+
+    # ── Base word extraction ───────────────────────────────────
+    if do_base:
+        _info("Extracting base words...")
+        try:
+            bases = extract_base_words(args.wordlist)
+            _ok(f"Unique base words found: {len(bases):,}")
+            if base_output:
+                Path(base_output).write_text(
+                    "\n".join(bases), encoding="utf-8"
+                )
+                _ok(f"Base words saved to: {base_output}")
+            else:
+                for b in bases[:50]:
+                    print(f"  {b}")
+                if len(bases) > 50:
+                    print(f"  ... and {len(bases)-50} more")
+        except Exception as exc:
+            _warn(f"Base word extraction failed: {exc}")
 
 
 def cmd_merge(args: argparse.Namespace) -> None:
@@ -514,25 +660,71 @@ def cmd_dns(args: argparse.Namespace) -> None:
     """Handler for DNS wordlist generation."""
     from wfh_modules.dns_wordlist import (
         generate_subdomain_permutations, generate_from_template, load_words_from_file,
+        load_templates_from_yaml, generate_from_yaml_templates,
+        generate_multi_domain, filter_dns_output,
     )
 
-    words: list[str] = []
-    if args.wordlist:
+    match_regex = getattr(args, "match_regex", None)
+    filter_regex = getattr(args, "filter_regex", None)
+    separator = getattr(args, "separator", None)
+    separators = [separator] if separator else None
+
+    # ── Multi-domain mode ──────────────────────────────────────
+    domain_list = getattr(args, "domain_list", None)
+    if domain_list:
+        words: list[str] = []
+        if getattr(args, "wordlist", None):
+            words = load_words_from_file(args.wordlist)
+        if getattr(args, "words", None):
+            words.extend(args.words)
+        gen = generate_multi_domain(
+            domain_list, words, separators,
+            use_prefixes=not getattr(args, "no_prefixes", False),
+            use_suffixes=not getattr(args, "no_suffixes", False),
+            match_regex=match_regex,
+            filter_regex=filter_regex,
+        )
+        count = _write_output(gen, args.output)
+        _ok(f"Generated: {count:,} DNS entries")
+        return
+
+    words = []
+    if getattr(args, "wordlist", None):
         words = load_words_from_file(args.wordlist)
-    if args.words:
+    if getattr(args, "words", None):
         words.extend(args.words)
 
     if not words:
         _err("Provide words with --wordlist or --words")
         return
 
+    # ── YAML template file ─────────────────────────────────────
+    template_file = getattr(args, "template_file", None)
+    if template_file:
+        try:
+            templates = load_templates_from_yaml(template_file)
+        except (FileNotFoundError, ImportError) as exc:
+            _err(str(exc))
+            return
+        gen = generate_from_yaml_templates(
+            templates, words, args.domain,
+            match_regex=match_regex,
+            filter_regex=filter_regex,
+        )
+        count = _write_output(gen, args.output)
+        _ok(f"Generated: {count:,} DNS entries")
+        return
+
     if args.template:
         gen = generate_from_template(args.template, words, args.domain)
+        gen = filter_dns_output(gen, match_regex, filter_regex)
     else:
         gen = generate_subdomain_permutations(
-            words, args.domain,
+            words, args.domain, separators,
             use_prefixes=not args.no_prefixes,
             use_suffixes=not args.no_suffixes,
+            match_regex=match_regex,
+            filter_regex=filter_regex,
         )
 
     count = _write_output(gen, args.output)
@@ -781,24 +973,35 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="""Examples:
   python wfh.py charset 6 8 abc123
   python wfh.py charset 8 8 --pattern "Pass@@@%%%"
+  python wfh.py charset 8 8 --mask "?u?l?l?l?d?d?s"
+  python wfh.py charset 8 8 --digits 2 --lower 4 --upper 1 --special 1
   python wfh.py charset 6 8 -f charsets.cfg mixalpha-numeric
   python wfh.py charset --create-charset my_charsets.cfg
   python wfh.py pattern -t "DS{cod}@rd.com.br" --vars cod=1200-1300
   python wfh.py profile
   python wfh.py profile --name "John Doe" --nick "johnny" --birth 15/03/1990
+  python wfh.py profile --profile-file target.yaml -o wordlist.lst
+  python wfh.py profile --year-start 2000 --year-end 2026 --suffix-range 00-99
   python wfh.py corp
   python wfh.py phone --country brazil --state SP --type mobile -o phones_sp.lst
   python wfh.py phone --country usa --state NY --formats e164,local -o phones_ny.lst
   python wfh.py phone --ddi 55 --ddd 11 --pattern "9XXXX-XXXX" -o custom.lst
-  python wfh.py scrape https://site.com -d 2 --emails
+  python wfh.py scrape https://site.com -d 2 --emails --no-stopwords
+  python wfh.py scrape https://site.com --proxy http://127.0.0.1:8080
+  python wfh.py scrape https://site.com --user-agent "Mozilla/5.0" --header "X-Token: abc"
   python wfh.py ocr image.png -o wordlist.txt
   python wfh.py extract report.pdf spreadsheet.xlsx -o extracted.txt
   python wfh.py leet admin -m aggressive
   python wfh.py leet password -m custom --custom-map "a=@,4;s=$;e=3"
   python wfh.py xor --brute 1a2b3c4d
   python wfh.py analyze wlist_brasil.lst --top 30
+  python wfh.py analyze wlist_brasil.lst --masks --format json -o stats.json
+  python wfh.py analyze wlist_brasil.lst --base-words --base-output bases.lst
   python wfh.py merge l1.lst l2.lst --no-numeric --sort alpha -o merged.lst
   python wfh.py dns -w words.lst -d company.com
+  python wfh.py dns -d company.com --template-file patterns.yaml -w words.lst
+  python wfh.py dns --domain-list domains.txt -w words.lst -o subdomains.lst
+  python wfh.py dns -d company.com --match-regex "^api" --filter-regex "test"
   python wfh.py pharma --codes 1200-1250 -o pharma_passwords.lst
   python wfh.py sanitize wlist_brasil.lst --min-len 8 --sort alpha --inplace
   python wfh.py sanitize list.lst --filter "^[a-zA-Z]" --exclude "\\d{3,}$" -o clean.lst
@@ -814,12 +1017,24 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── charset ───────────────────────────────────────────────────────────
     p_cs = sub.add_parser("charset", help="Generate by charset and length")
-    p_cs.add_argument("min_len", nargs="?", type=int, default=6, help="Minimum length")
+    p_cs.add_argument("min_len", nargs="?", type=int, default=6, help="Minimum length (also fixed length for --constrained)")
     p_cs.add_argument("max_len", nargs="?", type=int, default=8, help="Maximum length")
     p_cs.add_argument("charset", nargs="?", default="lalpha",
                        help="Charset: built-in name or direct character string")
     p_cs.add_argument("-f", "--charset-file", dest="charset_file", help=".cfg charset file")
-    p_cs.add_argument("-p", "--pattern", help="Pattern with placeholders (@,%,^,...)")
+    p_cs.add_argument("-p", "--pattern", help="Pattern with Crunch-style placeholders (@,%,^,...)")
+    p_cs.add_argument("--mask", metavar="MASK",
+                       help="Hashcat-style mask (e.g. ?u?l?l?d?d?s — ?u=upper ?l=lower ?d=digit ?s=special ?a=all)")
+    p_cs.add_argument("--custom-charset1", dest="custom_charset1", metavar="CHARS",
+                       help="Custom charset for ?1 placeholder in mask")
+    p_cs.add_argument("--digits", dest="n_digits", type=int, default=0,
+                       help="Exact digit count (constrained composition mode)")
+    p_cs.add_argument("--lower", dest="n_lower", type=int, default=0,
+                       help="Exact lowercase count (constrained composition mode)")
+    p_cs.add_argument("--upper", dest="n_upper", type=int, default=0,
+                       help="Exact uppercase count (constrained composition mode)")
+    p_cs.add_argument("--special", dest="n_special", type=int, default=0,
+                       help="Exact special char count (constrained composition mode)")
     p_cs.add_argument("--create-charset", dest="create_charset", metavar="FILE",
                        help="Wizard to create a charset file")
     p_cs.add_argument("-o", "--output", help="Output file")
@@ -837,6 +1052,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_pr.add_argument("--name", help="Target full name")
     p_pr.add_argument("--nick", help="Nickname or alias")
     p_pr.add_argument("--birth", help="Date of birth (dd/mm/yyyy, ddmmyyyy, yyyy, or age)")
+    p_pr.add_argument("--profile-file", dest="profile_file", metavar="FILE",
+                       help="Load profile from YAML file (non-interactive mode)")
+    p_pr.add_argument("--year-start", dest="year_start", type=int, metavar="YYYY",
+                       help="Include year range from this year (e.g. 2000)")
+    p_pr.add_argument("--year-end", dest="year_end", type=int, metavar="YYYY",
+                       help="Include year range to this year (e.g. 2026)")
+    p_pr.add_argument("--suffix-range", dest="suffix_range", metavar="START-END",
+                       help="Append numeric suffix range (e.g. 00-99 or 1-9999)")
     p_pr.add_argument("--leet", default="basic",
                        choices=["basic", "medium", "aggressive", "none"],
                        help="Leet speak mode")
@@ -867,13 +1090,25 @@ def build_parser() -> argparse.ArgumentParser:
     # ── scrape ────────────────────────────────────────────────────────────
     p_sc = sub.add_parser("scrape", help="Web scraping wordlist extraction")
     p_sc.add_argument("url", help="Target URL")
-    p_sc.add_argument("-d", "--depth", type=int, default=2, help="Crawl depth")
-    p_sc.add_argument("--min-word", type=int, default=6, dest="min_word")
-    p_sc.add_argument("--max-word", type=int, default=32, dest="max_word")
-    p_sc.add_argument("--emails", action="store_true", help="Extract emails")
-    p_sc.add_argument("--meta", action="store_true", help="Extract metadata")
+    p_sc.add_argument("-d", "--depth", type=int, default=2, help="Crawl depth (default: 2)")
+    p_sc.add_argument("--min-word", type=int, default=6, dest="min_word",
+                       help="Minimum word length to extract (default: 6)")
+    p_sc.add_argument("--max-word", type=int, default=32, dest="max_word",
+                       help="Maximum word length to extract (default: 32)")
+    p_sc.add_argument("--emails", action="store_true", help="Extract email addresses")
+    p_sc.add_argument("--meta", action="store_true", help="Extract metadata (Author, Generator)")
     p_sc.add_argument("--auth", help="HTTP Basic Auth (user:password)")
-    p_sc.add_argument("--delay", type=float, default=0.5)
+    p_sc.add_argument("--proxy", help="HTTP/SOCKS proxy URL (e.g. http://127.0.0.1:8080)")
+    p_sc.add_argument("--user-agent", dest="user_agent",
+                       help="Custom User-Agent string")
+    p_sc.add_argument("--header", dest="headers", action="append", metavar="NAME:VALUE",
+                       help="Extra HTTP header (can be repeated)")
+    p_sc.add_argument("--no-stopwords", dest="no_stopwords", action="store_true",
+                       help="Exclude common EN/PT-BR stop-words from output")
+    p_sc.add_argument("--stopwords-file", dest="stopwords_file", metavar="FILE",
+                       help="Custom stop-words file (one word per line)")
+    p_sc.add_argument("--delay", type=float, default=0.5,
+                       help="Delay between requests in seconds (default: 0.5)")
     p_sc.add_argument("-o", "--output", help="Output file")
 
     # ── ocr ───────────────────────────────────────────────────────────────
@@ -912,7 +1147,15 @@ def build_parser() -> argparse.ArgumentParser:
     # ── analyze ───────────────────────────────────────────────────────────
     p_an = sub.add_parser("analyze", help="Statistical analysis of wordlist")
     p_an.add_argument("wordlist", help="Wordlist to analyze")
-    p_an.add_argument("--top", type=int, default=20, help="Top N most frequent")
+    p_an.add_argument("--top", type=int, default=20, help="Top N most frequent (default: 20)")
+    p_an.add_argument("--masks", action="store_true",
+                       help="Include Hashcat mask analysis (?u?l?d?s frequency)")
+    p_an.add_argument("--base-words", dest="base_words", action="store_true",
+                       help="Extract base words (strip trailing digits/specials)")
+    p_an.add_argument("--base-output", dest="base_output", metavar="FILE",
+                       help="Save base words to file")
+    p_an.add_argument("--format", dest="format", choices=["text", "json", "csv"],
+                       default="text", help="Output format (default: text)")
     p_an.add_argument("-o", "--output", help="Save report to file")
 
     # ── merge ─────────────────────────────────────────────────────────────
@@ -929,10 +1172,19 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── dns ───────────────────────────────────────────────────────────────
     p_dn = sub.add_parser("dns", help="DNS/subdomain fuzzing wordlist")
-    p_dn.add_argument("-d", "--domain", required=True, help="Target domain")
+    p_dn.add_argument("-d", "--domain", default="", help="Target domain (required unless --domain-list)")
+    p_dn.add_argument("--domain-list", dest="domain_list", metavar="FILE",
+                       help="File with one domain per line (multi-domain mode)")
     p_dn.add_argument("-w", "--wordlist", help="Words file")
     p_dn.add_argument("--words", nargs="+", help="Direct word list")
-    p_dn.add_argument("-t", "--template", help="Template (e.g. dev-{word}.{domain})")
+    p_dn.add_argument("-t", "--template", help="Inline template (e.g. dev-{word}.{domain})")
+    p_dn.add_argument("--template-file", dest="template_file", metavar="FILE",
+                       help="YAML file with permutation templates")
+    p_dn.add_argument("--separator", help="Custom separator between tokens (e.g. _ or .)")
+    p_dn.add_argument("--match-regex", dest="match_regex", metavar="REGEX",
+                       help="Include only output matching this regex")
+    p_dn.add_argument("--filter-regex", dest="filter_regex", metavar="REGEX",
+                       help="Exclude output matching this regex")
     p_dn.add_argument("--no-prefixes", action="store_true", dest="no_prefixes")
     p_dn.add_argument("--no-suffixes", action="store_true", dest="no_suffixes")
     p_dn.add_argument("-o", "--output", help="Output file")

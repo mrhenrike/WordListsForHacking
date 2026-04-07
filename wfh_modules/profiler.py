@@ -4,20 +4,25 @@ profiler.py — Interactive personal target profiling for wordlist generation.
 Each variation is emitted as a separate line (one entry per line).
 Generates: case variants, leet variants, token combinations, date variations,
 social handles, location patterns, corporate keywords, religious patterns,
-and behavioral patterns loaded from data/behavior_patterns.json.
+behavioral patterns loaded from data/behavior_patterns.json, and
+multi-token (2+3) permutation combinations.
+
+Supports loading profiles from YAML files for non-interactive/automated use.
 
 Usage:
-  wfh.py profile                       # full interactive wizard
+  wfh.py profile                              # full interactive wizard
   wfh.py profile --name "John" --nick "johnny" --birth 1990
+  wfh.py profile --profile-file target.yaml  # load from YAML file
 
 Author: André Henrique (@mrhenrike)
-Version: 2.1.0
+Version: 2.2.0
 """
 
 import json
 import logging
 import re
 from datetime import datetime, date
+from itertools import permutations as _permutations
 from pathlib import Path
 from typing import Generator, Optional
 
@@ -39,6 +44,121 @@ def _load_behavior_db() -> dict:
             logger.warning("behavior_patterns.json not found at %s", path)
             _BEHAVIOR_DB = {}
     return _BEHAVIOR_DB
+
+
+def load_profile_yaml(filepath: str) -> dict:
+    """
+    Load a personal profile from a YAML file.
+
+    This allows non-interactive, scripted use of the profiler.
+    The YAML structure mirrors the keys returned by interactive_profile().
+
+    Example YAML::
+
+        full_name: "John Doe"
+        short_name: "John"
+        nicknames:
+          - "johnny"
+          - "jdoe"
+        birth_day: 15
+        birth_month: 3
+        birth_year: 1990
+        pets:
+          - "Rex"
+        keywords:
+          - "soccer"
+          - "hacker"
+        leet_mode: "basic"
+        min_len: 6
+        max_len: 32
+        year_start: 2000
+        year_end: 2026
+        suffix_range_start: 0
+        suffix_range_end: 99
+        suffix_range_zero_pad: 2
+
+    Args:
+        filepath: Path to the YAML profile file.
+
+    Returns:
+        Profile dict, same structure as interactive_profile() output.
+
+    Raises:
+        FileNotFoundError: If the YAML file does not exist.
+        ImportError: If PyYAML is not installed.
+    """
+    try:
+        import yaml
+    except ImportError as exc:
+        raise ImportError(
+            "PyYAML is required for --profile-file. Install: pip install pyyaml"
+        ) from exc
+
+    path = Path(filepath)
+    if not path.exists():
+        raise FileNotFoundError(f"Profile file not found: {filepath}")
+
+    with path.open(encoding="utf-8") as f:
+        data = yaml.safe_load(f) or {}
+
+    # Normalize list fields that might be given as strings
+    for list_field in ("nicknames", "phones", "social_handles", "keywords",
+                       "special_dates", "pets", "children"):
+        val = data.get(list_field)
+        if isinstance(val, str):
+            data[list_field] = [v.strip() for v in val.split(",") if v.strip()]
+        elif val is None:
+            data[list_field] = []
+
+    return data
+
+
+def generate_year_range_tokens(
+    year_start: int,
+    year_end: int,
+) -> list[str]:
+    """
+    Generate year string tokens for a range of years.
+
+    Produces 4-digit and 2-digit representations.
+
+    Args:
+        year_start: First year (inclusive).
+        year_end: Last year (inclusive).
+
+    Returns:
+        List of year strings (e.g., ["2020", "20", "2021", "21", ...]).
+    """
+    tokens: list[str] = []
+    for y in range(year_start, year_end + 1):
+        ys = str(y)
+        tokens.append(ys)
+        tokens.append(ys[-2:])
+    return list(dict.fromkeys(tokens))
+
+
+def generate_suffix_range_tokens(
+    start: int,
+    end: int,
+    zero_pad: int = 0,
+) -> list[str]:
+    """
+    Generate numeric suffix tokens for a number range.
+
+    Args:
+        start: First number (inclusive).
+        end: Last number (inclusive).
+        zero_pad: Minimum width for zero-padding (0 = no padding).
+
+    Returns:
+        List of formatted number strings.
+
+    Examples:
+        generate_suffix_range_tokens(0, 99, 2) → ["00", "01", ..., "99"]
+        generate_suffix_range_tokens(1, 9, 0)  → ["1", "2", ..., "9"]
+    """
+    fmt = f"0{zero_pad}d" if zero_pad > 0 else "d"
+    return [format(n, fmt) for n in range(start, end + 1)]
 
 
 def list_religions() -> list[tuple[str, str]]:
@@ -377,16 +497,30 @@ def _emit_all(
                     if r:
                         yield r
 
-    # Token pair combinations
+    # Token pair combinations (2-token permutations)
     limit = min(len(tokens), 15)  # Cap to avoid combinatorial explosion
-    for i in range(limit):
-        for j in range(limit):
-            if i == j:
-                continue
-            for sep in seps:
-                r = _try_emit(tokens[i] + sep + tokens[j])
-                if r:
-                    yield r
+    token_subset = tokens[:limit]
+    for t1, t2 in _permutations(token_subset, 2):
+        for sep in seps:
+            r = _try_emit(t1 + sep + t2)
+            if r:
+                yield r
+
+    # 3-token combinations — use first 8 tokens only to limit volume
+    limit3 = min(len(tokens), 8)
+    token3_subset = tokens[:limit3]
+    for t1, t2, t3 in _permutations(token3_subset, 3):
+        # Only use empty separator for 3-token to keep entries from exploding
+        r = _try_emit(t1 + t2 + t3)
+        if r:
+            yield r
+        # With one selected separator (first non-empty)
+        non_empty_seps = [s for s in seps if s]
+        if non_empty_seps:
+            sep = non_empty_seps[0]
+            r = _try_emit(t1 + sep + t2 + sep + t3)
+            if r:
+                yield r
 
     # Prefix + token
     for pref in COMMON_PREFIXES:
@@ -940,6 +1074,24 @@ def generate_from_profile(
             clean_sd = re.sub(r"\D", "", sd)
             if clean_sd and clean_sd not in all_date_tokens:
                 all_date_tokens.append(clean_sd)
+
+    # ── Year range tokens (--year-start / --year-end) ─────────
+    y_start = profile.get("year_start")
+    y_end = profile.get("year_end")
+    if y_start and y_end:
+        for yt in generate_year_range_tokens(int(y_start), int(y_end)):
+            if yt not in all_date_tokens:
+                all_date_tokens.append(yt)
+
+    # ── Suffix range tokens (--suffix-range) ──────────────────
+    sr_start = profile.get("suffix_range_start")
+    sr_end = profile.get("suffix_range_end")
+    if sr_start is not None and sr_end is not None:
+        zero_pad = int(profile.get("suffix_range_zero_pad", 0))
+        for st in generate_suffix_range_tokens(int(sr_start), int(sr_end), zero_pad):
+            # Add as date-like suffixes to combine with word_tokens
+            if st not in all_date_tokens:
+                all_date_tokens.append(st)
 
     # Special characters override
     seps = list(WORD_SEPARATORS)

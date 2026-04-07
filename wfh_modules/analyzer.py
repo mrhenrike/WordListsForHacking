@@ -7,16 +7,21 @@ Métricas:
   - Top N senhas mais frequentes
   - Distribuição de tipos de char (só letras, só números, misto)
   - Posição de números e especiais na senha
-  - Charset mais comuns
+  - Análise de máscaras estilo Hashcat (?u?l?d?s)
+  - Extração de palavras-base (sem sufixo numérico/especial)
+  - Export em JSON e CSV
 
 Uso:
   wfh.py analyze wordlist.lst
-  wfh.py analyze wordlist.lst --top 20 --out relatorio.txt
+  wfh.py analyze wordlist.lst --top 20 --masks --base-words --format json
 
 Autor: André Henrique (@mrhenrike)
-Versão: 1.0.0
+Versão: 1.1.0
 """
 
+import csv
+import io
+import json
 import logging
 import re
 from collections import Counter
@@ -28,6 +33,9 @@ logger = logging.getLogger(__name__)
 _NUM_RE = re.compile(r"\d")
 _SPECIAL_RE = re.compile(r"[^a-zA-Z0-9]")
 _LETTER_RE = re.compile(r"[a-zA-ZÀ-ÿ]")
+# Regex para strip de sufixo numérico/especial ao extrair palavras-base
+_TRAILING_JUNK_RE = re.compile(r"[^a-zA-ZÀ-ÿ]+$")
+_LEADING_JUNK_RE = re.compile(r"^[^a-zA-ZÀ-ÿ]+")
 
 
 def analyze_wordlist(
@@ -169,4 +177,199 @@ def format_report(metrics: dict, filepath: str) -> str:
         lines.append(f"  Len {length:3d}: {count:8,}  ({pct:5.1f}%) {bar}")
     lines.append("=" * 60)
 
+    return "\n".join(lines)
+
+
+def _char_to_mask_token(ch: str) -> str:
+    """Converte um caractere para o token de máscara Hashcat correspondente."""
+    if ch.isupper():
+        return "?u"
+    if ch.islower():
+        return "?l"
+    if ch.isdigit():
+        return "?d"
+    return "?s"
+
+
+def analyze_masks(
+    filepath: str,
+    top_n: int = 20,
+) -> dict:
+    """
+    Analisa máscaras de senha estilo Hashcat a partir de uma wordlist.
+
+    Converte cada entrada para uma máscara (ex: 'Admin@123' → '?u?l?l?l?l?s?d?d?d')
+    e conta as máscaras mais frequentes. Útil para criar regras de ataque direcionadas.
+
+    Args:
+        filepath: Caminho da wordlist.
+        top_n: Número de máscaras mais frequentes a listar.
+
+    Returns:
+        Dict com 'mask_frequency' (Counter), 'top_masks' e 'unique_masks'.
+    """
+    path = Path(filepath)
+    if not path.exists():
+        raise FileNotFoundError(f"Wordlist não encontrada: {filepath}")
+
+    mask_counter: Counter = Counter()
+    with path.open(encoding="utf-8", errors="replace") as f:
+        for line in f:
+            entry = line.rstrip("\n\r")
+            if not entry:
+                continue
+            mask = "".join(_char_to_mask_token(c) for c in entry)
+            mask_counter[mask] += 1
+
+    return {
+        "unique_masks": len(mask_counter),
+        "top_masks": mask_counter.most_common(top_n),
+        "mask_frequency": dict(mask_counter),
+    }
+
+
+def extract_base_words(
+    filepath: str,
+    min_len: int = 4,
+) -> list[str]:
+    """
+    Extrai palavras-base removendo sufixos/prefixos numéricos e especiais.
+
+    Por exemplo, 'password123!' → 'password', 'Admin@2024' → 'Admin'.
+    Útil para identificar o vocabulário raiz de uma wordlist comprometida.
+
+    Args:
+        filepath: Caminho da wordlist.
+        min_len: Comprimento mínimo da palavra-base extraída.
+
+    Returns:
+        Lista de palavras-base únicas ordenadas.
+    """
+    path = Path(filepath)
+    if not path.exists():
+        raise FileNotFoundError(f"Wordlist não encontrada: {filepath}")
+
+    seen: set[str] = set()
+    bases: list[str] = []
+
+    with path.open(encoding="utf-8", errors="replace") as f:
+        for line in f:
+            entry = line.rstrip("\n\r")
+            if not entry:
+                continue
+            base = _TRAILING_JUNK_RE.sub("", entry)
+            base = _LEADING_JUNK_RE.sub("", base)
+            if len(base) >= min_len and base not in seen:
+                seen.add(base)
+                bases.append(base)
+
+    return sorted(bases)
+
+
+def export_stats_json(metrics: dict, filepath: str, mask_data: Optional[dict] = None) -> str:
+    """
+    Exporta métricas de análise em formato JSON.
+
+    Args:
+        metrics: Dict retornado por analyze_wordlist().
+        filepath: Caminho da wordlist analisada (para metadados).
+        mask_data: Dict retornado por analyze_masks() (opcional).
+
+    Returns:
+        String JSON formatada.
+    """
+    export: dict = {
+        "source": filepath,
+        "summary": {
+            "total": metrics["total"],
+            "unique": metrics["unique"],
+            "duplicates": metrics["duplicates"],
+            "min_length": metrics["min_length"],
+            "max_length": metrics["max_length"],
+            "avg_length": metrics["avg_length"],
+        },
+        "char_types": metrics["char_types"],
+        "number_positions": metrics["number_positions"],
+        "special_positions": metrics["special_positions"],
+        "length_distribution": metrics["length_distribution"],
+        "top_passwords": [
+            {"entry": e, "count": c} for e, c in metrics["top_passwords"]
+        ],
+    }
+    if mask_data:
+        export["mask_analysis"] = {
+            "unique_masks": mask_data["unique_masks"],
+            "top_masks": [
+                {"mask": m, "count": c} for m, c in mask_data["top_masks"]
+            ],
+        }
+    return json.dumps(export, ensure_ascii=False, indent=2)
+
+
+def export_stats_csv(metrics: dict, mask_data: Optional[dict] = None) -> str:
+    """
+    Exporta distribuição de comprimento e top senhas em formato CSV.
+
+    Args:
+        metrics: Dict retornado por analyze_wordlist().
+        mask_data: Dict retornado por analyze_masks() (opcional).
+
+    Returns:
+        String CSV completa.
+    """
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+
+    writer.writerow(["## SUMMARY"])
+    writer.writerow(["metric", "value"])
+    writer.writerow(["total", metrics["total"]])
+    writer.writerow(["unique", metrics["unique"]])
+    writer.writerow(["duplicates", metrics["duplicates"]])
+    writer.writerow(["min_length", metrics["min_length"]])
+    writer.writerow(["max_length", metrics["max_length"]])
+    writer.writerow(["avg_length", metrics["avg_length"]])
+    writer.writerow([])
+
+    writer.writerow(["## LENGTH DISTRIBUTION"])
+    writer.writerow(["length", "count", "percent"])
+    total = metrics["total"] or 1
+    for length, count in sorted(metrics["length_distribution"].items()):
+        writer.writerow([length, count, f"{count/total*100:.2f}%"])
+    writer.writerow([])
+
+    writer.writerow(["## TOP PASSWORDS"])
+    writer.writerow(["rank", "entry", "count"])
+    for i, (entry, count) in enumerate(metrics["top_passwords"], 1):
+        writer.writerow([i, entry, count])
+
+    if mask_data:
+        writer.writerow([])
+        writer.writerow(["## TOP MASKS"])
+        writer.writerow(["rank", "mask", "count"])
+        for i, (mask, count) in enumerate(mask_data["top_masks"], 1):
+            writer.writerow([i, mask, count])
+
+    return buf.getvalue()
+
+
+def format_mask_report(mask_data: dict) -> str:
+    """
+    Formata relatório de análise de máscaras Hashcat.
+
+    Args:
+        mask_data: Dict retornado por analyze_masks().
+
+    Returns:
+        String formatada do relatório de máscaras.
+    """
+    lines: list[str] = []
+    lines.append("=" * 60)
+    lines.append("Hashcat Mask Analysis")
+    lines.append("=" * 60)
+    lines.append(f"Unique masks found: {mask_data['unique_masks']:,}")
+    lines.append("")
+    lines.append(f"--- Top {len(mask_data['top_masks'])} Masks ---")
+    for i, (mask, count) in enumerate(mask_data["top_masks"], 1):
+        lines.append(f"  {i:3d}. {mask}  ({count:,}x)")
+    lines.append("=" * 60)
     return "\n".join(lines)
