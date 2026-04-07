@@ -11,3 +11,9 @@ __pycache__/
 generated/*.lst
 generated/*.txt
 !generated/.gitkeep
+
+# PyPI build artifacts
+dist/
+build/
+*.egg-info/
+*.egg

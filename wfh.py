@@ -35,6 +35,7 @@ Usage:
 Author: André Henrique (@mrhenrike)
 Version: 1.8.0
 """
+from __future__ import annotations
 
 import argparse
 import logging
@@ -82,7 +83,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 
 # ── Graceful shutdown ──────────────────────────────────────────────────────────
 _SHUTDOWN_REQUESTED = False

@@ -17,6 +17,7 @@ Usage:
 Author: André Henrique (@mrhenrike)
 Version: 2.2.0
 """
+from __future__ import annotations
 
 import json
 import logging
@@ -26,8 +27,17 @@ from itertools import permutations as _permutations
 from pathlib import Path
 from typing import Generator, Optional
 
-_HERE = Path(__file__).resolve().parent.parent
+_MODULE_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _MODULE_DIR.parent
 _BEHAVIOR_DB: Optional[dict] = None
+
+
+def _find_data_file(filename: str) -> Path:
+    """Resolve data file path, checking wfh_modules/data/ first then repo root data/."""
+    pkg_path = _MODULE_DIR / "data" / filename
+    if pkg_path.exists():
+        return pkg_path
+    return _REPO_ROOT / "data" / filename
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +46,7 @@ def _load_behavior_db() -> dict:
     """Load behavior_patterns.json once and cache it in memory."""
     global _BEHAVIOR_DB
     if _BEHAVIOR_DB is None:
-        path = _HERE / "data" / "behavior_patterns.json"
+        path = _find_data_file("behavior_patterns.json")
         try:
             with open(path, encoding="utf-8") as f:
                 _BEHAVIOR_DB = json.load(f)

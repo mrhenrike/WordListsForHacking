@@ -7,6 +7,7 @@ Inspired by hashcat rule engine, pipal mangling, and BEWGor permutations.
 Author: André Henrique (@mrhenrike)
 Version: 1.0.0
 """
+from __future__ import annotations
 
 import logging
 from typing import Generator

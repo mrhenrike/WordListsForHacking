@@ -18,6 +18,7 @@ Uso:
 Autor: André Henrique (@mrhenrike)
 Versão: 1.1.0
 """
+from __future__ import annotations
 
 import csv
 import io

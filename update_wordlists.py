@@ -10,6 +10,7 @@ Gera/atualiza:
   - username_br.lst    : usernames brasileiros e globais
   - default-creds-combo.lst : pares user:password sem restrição de tamanho
 """
+from __future__ import annotations
 
 import logging
 import os
