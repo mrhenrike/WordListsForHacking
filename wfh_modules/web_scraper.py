@@ -5,16 +5,23 @@ Funcionalidades:
   - Spider de URL com controle de profundidade
   - Extração de palavras únicas com filtro de comprimento
   - Extração de emails e metadados (Author, Generator)
-  - Suporte a cookies, User-Agent e autenticação HTTP básica
+  - Suporte a proxy HTTP/SOCKS (--proxy)
+  - Suporte a cookies, User-Agent customizável e headers adicionais
+  - Autenticação HTTP básica
+  - Exclusão de stop-words (EN/PT-BR) via --no-stopwords ou arquivo customizado
   - Output streaming para arquivo ou stdout
 
 Exemplos:
   wfh.py scrape https://empresa.com.br
   wfh.py scrape https://empresa.com.br -d 2 --min-word 6 --emails --meta
   wfh.py scrape https://empresa.com.br --auth usuario:senha
+  wfh.py scrape https://empresa.com.br --proxy http://127.0.0.1:8080
+  wfh.py scrape https://empresa.com.br --no-stopwords
+  wfh.py scrape https://empresa.com.br --user-agent "Mozilla/5.0 (custom)"
+  wfh.py scrape https://empresa.com.br --header "X-Api-Key: abc123"
 
 Autor: André Henrique (@mrhenrike)
-Versão: 1.0.0
+Versão: 1.1.0
 """
 
 import logging
@@ -40,6 +47,30 @@ _WORD_RE = re.compile(r"[a-zA-ZÀ-ÿ\u0100-\u024F][a-zA-ZÀ-ÿ\u0100-\u024F'-]*[
 _EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
 _META_FIELDS = ["author", "generator", "description", "keywords", "creator"]
 
+# Stop-words padrão EN + PT-BR (fusão para uso offline, sem dependências externas)
+DEFAULT_STOPWORDS: frozenset[str] = frozenset({
+    # EN
+    "the", "and", "for", "are", "but", "not", "you", "all", "can", "her",
+    "was", "one", "our", "out", "had", "has", "his", "how", "its", "who",
+    "did", "get", "may", "new", "now", "old", "see", "two", "way", "use",
+    "she", "each", "from", "have", "that", "this", "they", "will", "with",
+    "your", "more", "also", "into", "than", "then", "them", "some", "what",
+    "when", "been", "only", "over", "such", "most", "make", "like", "time",
+    "just", "very", "well", "even", "know", "said", "back", "after", "first",
+    "last", "long", "place", "come", "about", "could", "would", "should",
+    "there", "their", "where", "which", "while", "think", "these", "other",
+    "people", "those", "being", "because", "between", "before", "through",
+    # PT-BR
+    "que", "não", "com", "uma", "para", "por", "como", "mas", "foi", "isso",
+    "ele", "ela", "são", "nas", "nos", "seu", "sua", "esse", "essa", "isto",
+    "nós", "eles", "elas", "dos", "das", "num", "uma", "uns", "umas", "mais",
+    "também", "ser", "ter", "tem", "era", "foi", "ser", "está", "este",
+    "esta", "isso", "aqui", "ali", "bem", "sim", "não", "já", "ainda",
+    "mesmo", "muito", "pouco", "todo", "toda", "todos", "todas", "outro",
+    "outra", "outros", "outras", "quando", "onde", "porque", "como", "assim",
+    "então", "depois", "antes", "agora", "sempre", "nunca", "até", "sobre",
+})
+
 
 class WebScraper:
     """
@@ -56,6 +87,9 @@ class WebScraper:
         delay: Delay em segundos entre requisições.
         timeout: Timeout HTTP em segundos.
         auth: Tupla (usuario, senha) para HTTP Basic Auth.
+        proxy: URL do proxy HTTP/SOCKS (ex: 'http://127.0.0.1:8080').
+        extra_headers: Headers HTTP adicionais.
+        stopwords: Set de palavras a excluir do resultado.
     """
 
     DEFAULT_UA = (
@@ -77,6 +111,9 @@ class WebScraper:
         timeout: int = 10,
         auth: Optional[tuple[str, str]] = None,
         cookies: Optional[dict] = None,
+        proxy: Optional[str] = None,
+        extra_headers: Optional[dict[str, str]] = None,
+        stopwords: Optional[frozenset[str]] = None,
     ) -> None:
         self.start_url = start_url
         self.depth = depth
@@ -86,16 +123,21 @@ class WebScraper:
         self.extract_meta = extract_meta
         self.delay = delay
         self.timeout = timeout
+        self.stopwords: frozenset[str] = stopwords if stopwords is not None else frozenset()
 
         parsed = urlparse(start_url)
         self.base_domain = f"{parsed.scheme}://{parsed.netloc}"
 
         self.session = requests.Session()
         self.session.headers["User-Agent"] = user_agent or self.DEFAULT_UA
+        if extra_headers:
+            self.session.headers.update(extra_headers)
         if auth:
             self.session.auth = auth
         if cookies:
             self.session.cookies.update(cookies)
+        if proxy:
+            self.session.proxies = {"http": proxy, "https": proxy}
 
     def _fetch(self, url: str) -> Optional[str]:
         """
@@ -110,7 +152,10 @@ class WebScraper:
         try:
             resp = self.session.get(url, timeout=self.timeout)
             resp.raise_for_status()
-            return resp.text
+            # Forçar UTF-8 se charset não declarado, evitando UnicodeDecodeError
+            if resp.encoding and resp.encoding.lower() in ("iso-8859-1", "latin-1", "windows-1252"):
+                resp.encoding = "utf-8"
+            return resp.content.decode("utf-8", errors="replace")
         except Exception as exc:
             logger.debug("Erro ao acessar %s: %s", url, exc)
             return None
@@ -135,7 +180,8 @@ class WebScraper:
         for match in _WORD_RE.finditer(text):
             word = match.group()
             if self.min_word_len <= len(word) <= self.max_word_len:
-                words.add(word)
+                if word.lower() not in self.stopwords:
+                    words.add(word)
         return words
 
     def _extract_emails(self, html: str) -> set[str]:
