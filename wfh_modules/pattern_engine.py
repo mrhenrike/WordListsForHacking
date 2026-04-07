@@ -18,7 +18,7 @@ Suporta variáveis:
 Exemplos de uso:
   wfh.py pattern -t "DS{cod}@rd.com.br" --vars cod=1000-9999
   wfh.py pattern -t "{empresa}#{ano}" --vars empresa=Drogasil,Hapvida ano=2020-2026
-  wfh.py pattern -f patterns.txt --vars @data/pharma_br.py
+  wfh.py pattern -f patterns.txt --vars empresa=ACME cod=1000-1999
 
 Autor: André Henrique (@mrhenrike)
 Versão: 1.0.0
@@ -219,16 +219,11 @@ def generate_pharma_patterns(
     Yields:
         Strings de senhas/logins geradas.
     """
-    # Importar dados da pharma_br se disponível
-    try:
-        import sys, os
-        sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-        from data.pharma_br import RD_SAUDE_CNPJS_SAMPLE, HEALTH_PLANS_SIMPLE
-        base_cnpjs = cnpjs or RD_SAUDE_CNPJS_SAMPLE
-        health_plans = HEALTH_PLANS_SIMPLE
-    except ImportError:
-        base_cnpjs = cnpjs or ["61585865200916"]
-        health_plans = ["bradesco", "hapvida", "sulamerica", "amil", "unimed"]
+    base_cnpjs = cnpjs or []
+    health_plan_prefixes = [
+        "plan", "health", "saude", "med", "care", "vida", "seguro",
+        "prevent", "assist", "clinica", "hospitalar", "dental",
+    ]
 
     anos_list = anos or DEFAULT_ANOS
 
@@ -243,20 +238,22 @@ def generate_pharma_patterns(
             seen.add(s)
             yield s
 
+    # Generic retail/healthcare chain patterns:
+    #   {PREFIX}{store_code}@{domain}
+    #   {PREFIX}#{store_code}
+    #   {PREFIX}{store_code}
+    chain_prefixes = ["DS", "LJ", "FIL", "UND", "SUC", "AG", "PDV", "CD"]
     for cod in store_codes:
-        yield from emit(f"DS{cod}@rd.com.br")
-        yield from emit(f"Drogasil#{cod}")
-        yield from emit(f"DROGA{cod}")
-        yield from emit(f"drogasil{cod}")
-        yield from emit(f"raia{cod}")
-        yield from emit(f"RAIA{cod}")
+        for pfx in chain_prefixes:
+            yield from emit(f"{pfx}{cod}")
+        yield from emit(f"IJ{cod}")
 
     for cnpj in base_cnpjs:
-        yield from emit(f"memed{cnpj}")
-        yield from emit(f"iclinix{cnpj}")
+        for portal in ["portal", "sistema", "erp", "crm", "tickets"]:
+            yield from emit(f"{portal}{cnpj}")
 
-    # Planos de saúde + separadores + anos
-    for plan in health_plans:
+    # Health/insurance plan prefixes + separators + years
+    for plan in health_plan_prefixes:
         for sep in ["@", "#", ".", ""]:
             for ano in anos_list:
                 yield from emit(f"{plan}{sep}{ano}")

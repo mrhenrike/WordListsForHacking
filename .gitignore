@@ -4,6 +4,9 @@ __pycache__/
 .tmp/
 .env
 
+# Modelo ML treinado (não versionar — pode conter hash de dados sensíveis)
+.model/
+
 # Listas geradas pelo wfh.py (versionar apenas quando curadas)
 generated/*.lst
 generated/*.txt
