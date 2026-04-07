@@ -2,8 +2,8 @@
   "_meta": {
     "description": "Offline behavioral and religious pattern database for wordlist generation.",
     "author": "André Henrique (@mrhenrike)",
-    "version": "1.0.0",
-    "note": "All data sourced from public research, open religious texts, and password leak analysis."
+    "version": "2.0.0",
+    "note": "All data sourced from public research, open religious texts, password leak analysis, and open-source wordlist generators (pipal, cupp, elpscrk, BEWGor, Crunch, intelligence-wordlist-generator, pnwgen, GoblinWordGenerator, 0day-Xfinity, SecLists)."
   },
 
   "religions": {
@@ -488,31 +488,273 @@
     }
   },
 
+  "industry_credential_patterns": {
+    "retail_chain": {
+      "description": "Store/branch-based credential patterns common in retail chains (pharmacy, supermarket, fashion, etc.)",
+      "login_templates": [
+        "{branch_prefix}{store_code}@{domain}",
+        "{branch_prefix}{store_code}",
+        "IJ{sequential_6digit}",
+        "{branch_prefix}_{store_code}"
+      ],
+      "password_templates": [
+        "{brand_upper}{store_code}",
+        "{brand_lower}{store_code}",
+        "{brand_cap}#{store_code}",
+        "{brand_cap}@{year}",
+        "{brand_cap}#{year}",
+        "{portal}{cnpj_14digit}",
+        "{brand_lower}{cnpj_14digit}"
+      ],
+      "branch_prefix_examples": ["DS", "LJ", "FIL", "UND", "SUC", "AG", "PDV", "CD", "MX"],
+      "portal_prefixes": ["portal", "sistema", "erp", "tickets", "crm", "bi", "service", "snow", "itsm"]
+    },
+    "healthcare": {
+      "description": "Health plan, hospital and clinic credential patterns",
+      "password_templates": [
+        "{plan_name}{sep}{year}",
+        "{plan_name}{sep}{store_code}",
+        "{plan_prefix}@{year}",
+        "{plan_prefix}#{year}",
+        "{plan_prefix}{cnpj_14digit}",
+        "{role}@{plan_prefix}{year}"
+      ],
+      "generic_prefixes": ["plan", "health", "saude", "med", "care", "vida", "seguro", "prevent", "assist", "clinica", "hospitalar", "dental"]
+    },
+    "industrial_ot": {
+      "description": "ICS/SCADA/OT credential patterns common in energy, manufacturing, utilities",
+      "password_templates": [
+        "{system}{sequential_code}",
+        "{plc_brand}{model}",
+        "{site_code}@{year}",
+        "{protocol}{port}",
+        "{hmi_prefix}{unit_id}"
+      ],
+      "system_prefixes": ["scada", "hmi", "plc", "rtu", "dcs", "ied", "opc", "dnp3", "modbus", "bacnet"],
+      "default_patterns": ["operator", "supervisor", "engineer", "maint", "readonly"]
+    }
+  },
+
   "common_password_behaviors": {
     "birthday_based": {
       "note": "Highly common: birth date as part of password",
       "patterns": ["{name}{day}{month}{year}","{name}{ddmmyyyy}","{year}{name}",
                    "{name}@{year}","{name}#{year}","{name}{year}!",
-                   "{name}{last2digits_year}","{day}{month}@{name}"]
+                   "{name}{last2digits_year}","{day}{month}@{name}"],
+      "date_formats_by_locale": {
+        "br": ["DDMMYYYY","DDMM","DD/MM/YYYY","DD-MM-YYYY","DD.MM.YYYY","MMDD"],
+        "us": ["MMDDYYYY","MMDD","MM/DD/YYYY","MM-DD-YYYY","MDYY"],
+        "eu": ["DDMMYYYY","DD.MM.YYYY","DD/MM/YYYY","YYYYMMDD"],
+        "iso": ["YYYYMMDD","YYYY-MM-DD","YYMMDD"],
+        "jp_cn_kr": ["YYYYMMDD","YYYY/MM/DD","YYYY年MM月DD日"]
+      },
+      "year_ranges": {
+        "birth_years": [1950, 2010],
+        "calendar_years": [2015, 2030],
+        "historic_years": [1990, 2026]
+      }
     },
     "name_based": {
       "patterns": ["{name}123","{name}1234","{name}12345","{name}!","{name}@",
                    "{name}#{year}","{name}@{year}","My{name}","I{name}","{name}Master",
-                   "{name}Admin","{name}User","{name}Pass","{name}{special}"]
+                   "{name}Admin","{name}User","{name}Pass","{name}{special}"],
+      "intl_patterns": [
+        "{name}san","{name}kun","{name}chan",
+        "{name}ji","{name}bhai","{name}didi",
+        "{name}herr","{name}frau",
+        "mon{name}","mi{name}","meu{name}","minha{name}"
+      ]
     },
     "keyboard_walk": {
-      "sequences": ["qwerty","asdfgh","zxcvbn","1qaz2wsx","qazwsx","1q2w3e4r",
-                    "qweasdzxc","123qwe","1q2w3e","abcdef","abc123","zaq1xsw2",
-                    "1qazxsw2","qaz2wsx","123asd","asd123"]
+      "qwerty_us": ["qwerty","qwertyuiop","asdfgh","asdfghjkl","zxcvbn","zxcvbnm",
+                     "1qaz2wsx","qazwsx","1q2w3e4r","qweasdzxc","123qwe","1q2w3e",
+                     "abcdef","abc123","zaq1xsw2","1qazxsw2","qaz2wsx","123asd","asd123",
+                     "qpalzm","1qaz","2wsx","3edc","4rfv","5tgb","6yhn","7ujm","8ik","9ol",
+                     "zaq1","xsw2","cde3","vfr4","bgt5","nhy6","mju7","poi9",
+                     "!qaz@wsx","qwer1234","asdf1234","zxcv1234","poiuytrewq",
+                     "mnbvcxz","lkjhgfdsa","0987654321"],
+      "qwerty_uk": ["qwerty","asdfgh","zxcvbn","1qaz2wsx","£$%^"],
+      "azerty_fr": ["azerty","azertyuiop","qsdfgh","qsdfghjklm","wxcvbn",
+                     "1aqz2swx","azeqsd","azertyui","123aze","aze123",
+                     "azer1234","qsdf1234","wxcv1234"],
+      "qwertz_de": ["qwertz","qwertzuiop","asdfgh","yxcvbn","yxcvbnm",
+                     "1qay2wsx","qayxsw","qwert12345",
+                     "qwertz1234","asdf1234","yxcv1234"],
+      "abnt2_br": ["qwerty","asdfgh","zxcvbn","1qaz2wsx","qazwsx",
+                    "çlkjhgfdsa","ãáàâ","éèê"],
+      "numeric_keypad": ["147258369","789456123","159357","123654789","741852963",
+                          "369258147","159753","357159","258456","0000","1111","9999"],
+      "t9_phone": {
+        "note": "T9 predictive text mapping (defined in BEWGor, not yet fully activated)",
+        "map": {"2":"abc","3":"def","4":"ghi","5":"jkl","6":"mno","7":"pqrs","8":"tuv","9":"wxyz"}
+      }
+    },
+    "leet_speak": {
+      "standard": {"a":"4","e":"3","i":"1","o":"0","s":"5","t":"7","g":"9","z":"2"},
+      "extended": {"a":["4","@"],"e":["3"],"i":["1","!"],"o":["0"],"s":["5","$"],"t":["7","+"],"g":["9","6"],"z":["2"],"b":["8"],"l":["1","|"],"c":["(","<"],"h":["#"],"n":["^"],"w":["vv"],"x":["><"]},
+      "note": "Standard map from CUPP, elpscrk, intelligence-wordlist-generator. Extended map for advanced permutation."
     },
     "number_suffix": {
       "common": ["1","12","123","1234","12345","123456","1234567","12345678",
                  "0","01","001","007","69","99","100","00","000","111","222","333",
-                 "444","555","666","777","888","999","2020","2021","2022","2023","2024","2025","2026"]
+                 "444","555","666","777","888","999","2020","2021","2022","2023","2024","2025","2026"],
+      "pin_codes": ["0000","1111","1234","4321","1379","2468","1122","1212","6969","0007",
+                    "2580","1357","8520","9876","5678","4444","7777","3333"],
+      "years_extended": [1990,1991,1992,1993,1994,1995,1996,1997,1998,1999,
+                         2000,2001,2002,2003,2004,2005,2006,2007,2008,2009,
+                         2010,2011,2012,2013,2014,2015,2016,2017,2018,2019,
+                         2020,2021,2022,2023,2024,2025,2026,2027,2028,2029,2030]
     },
     "special_suffix": {
-      "common": ["!","@","#","$","%","&","*","!@","@#","#$","!@#","@#$","!123","@123","!1"]
+      "common": ["!","@","#","$","%","&","*","!@","@#","#$","!@#","@#$","!123","@123","!1"],
+      "owasp_full": [" ","!","\"","#","$","%","&","'","(",")","*","+",",","-",".","/",
+                      ":",";","<","=",">","?","@","[","\\","]","^","_","`","{","|","}","~"]
+    },
+    "vendor_isp_patterns": {
+      "xfinity_comcast": {
+        "note": "Default ISP password: word5 + 4digit + word6. Inspired by 0day-Xfinity research.",
+        "format": "{word5}{4digit}{word6}",
+        "reverse_format": "{word6}{4digit}{word5}",
+        "word_length": [5, 6],
+        "numeric_block": "0000-9999",
+        "total_length": 15,
+        "case": "lowercase"
+      }
+    },
+    "connector_patterns": {
+      "note": "From intelligence-wordlist-generator: connectors between token permutations",
+      "connectors": ["", "_", ".", "-", "@", "#", "+"],
+      "email_tails": ["@gmail.com","@hotmail.com","@yahoo.com","@outlook.com","@icloud.com",
+                       "@protonmail.com","@live.com","@aol.com","@mail.com","@zoho.com"]
+    },
+    "abbreviation_patterns": {
+      "note": "From intelligence-wordlist-generator: systematic abbreviation of keywords",
+      "methods": ["first_letter_only","first_n_letters","accumulative_forward","accumulative_backward","reverse_each","reverse_accumulative"]
+    },
+    "permutation_strategies": {
+      "note": "Consolidated from cupp, elpscrk, BEWGor, intelligence-wordlist-generator, Crunch",
+      "cupp_style": "All ordered pairs of (name/nick/surname variants × date fragments × years × specials)",
+      "elpscrk_style": "Permutations by level (0-5): names, dates, phones, old passwords × recipes (nums, years, chars)",
+      "bewgor_style": "Bounded permutations of info-set tokens (words + numbers) up to perm_length=5, min/max line length filter",
+      "crunch_style": "Positional placeholders: lower(@)/upper(,)/digit(%)/symbol(^) per position, or full cartesian product",
+      "iwlgen_style": "Token subsets × permutations × connectors × leet × numeric/text tails"
     }
+  },
+
+  "locale_word_banks": {
+    "note": "Language-specific word banks extracted from pipal checkers and SecLists. Used for ML pattern matching and generation.",
+    "colors": {
+      "en": ["black","blue","brown","gray","green","indigo","orange","pink","purple","red","violet","white","yellow"],
+      "de": ["schwarz","blau","braun","grau","grün","indigo","orange","rosa","lila","rot","violett","weiß","gelb"],
+      "fr": ["noir","bleu","marron","gris","vert","orange","rose","rouge","blanc","jaune","violet","indigo","ocre","cyan","pourpre","brun","magenta","beige","argent","kaki","fushia","turquoise"],
+      "nl": ["zwart","blauw","bruin","grijs","groen","oranje","roze","paars","rood","wit","geel","violet","indigo"],
+      "pt_br": ["preto","azul","marrom","cinza","verde","prata","laranja","rosa","roxo","vermelho","violeta","branco","amarelo"],
+      "es": ["negro","azul","marrón","gris","verde","plata","naranja","rosa","morado","rojo","violeta","blanco","amarillo"],
+      "it": ["nero","blu","marrone","grigio","verde","argento","arancione","rosa","viola","rosso","bianco","giallo"],
+      "tr": ["siyah","mavi","kahverengi","gri","yeşil","turuncu","pembe","mor","kirmizi","beyaz","sari"],
+      "ru": ["черный","синий","коричневый","серый","зеленый","оранжевый","розовый","фиолетовый","красный","белый","желтый"],
+      "ja": ["黒","青","茶色","灰色","緑","橙","ピンク","紫","赤","白","黄色"],
+      "zh": ["黑","蓝","棕","灰","绿","橙","粉","紫","红","白","黄"],
+      "ko": ["검정","파랑","갈색","회색","녹색","주황","분홍","보라","빨강","하양","노랑"],
+      "hi": ["काला","नीला","भूरा","धूसर","हरा","नारंगी","गुलाबी","बैंगनी","लाल","सफ़ेद","पीला"],
+      "ar": ["أسود","أزرق","بني","رمادي","أخضر","برتقالي","وردي","بنفسجي","أحمر","أبيض","أصفر"]
+    },
+    "seasons": {
+      "en": ["summer","fall","winter","spring","autumn"],
+      "de": ["sommer","frühling","herbst","winter"],
+      "fr": ["été","ete","automne","hiver","printemps"],
+      "nl": ["zomer","herfst","winter","lente","voorjaar","najaar"],
+      "pt_br": ["verao","outono","inverno","primavera"],
+      "es": ["verano","otoño","invierno","primavera"],
+      "it": ["estate","autunno","inverno","primavera"],
+      "tr": ["yaz","sonbahar","kış","ilkbahar"],
+      "ru": ["лето","осень","зима","весна"],
+      "ja": ["夏","秋","冬","春"],
+      "zh": ["夏天","秋天","冬天","春天"]
+    },
+    "family": {
+      "en": ["aunt","baby","brother","dad","daughter","family","father","grandma","grandpa","husband","mom","mother","sister","son","uncle","wife","marriage","divorce","love"],
+      "de": ["tante","baby","bruder","vater","tochter","familie","großmutter","großvater","mann","mutter","schwester","sohn","onkel","frau","liebe"],
+      "fr": ["tante","bebe","frère","papa","fille","famille","mère","père","grandmère","grandpère","mari","maman","soeur","fils","oncle","femme","mariage","amour"],
+      "nl": ["tante","baby","broer","vader","dochter","familie","oma","opa","man","moeder","zus","zoon","oom","vrouw","liefde"],
+      "pt_br": ["titia","tia","bebe","irmao","irma","papai","filha","familia","avó","vovó","vovo","avô","vovô","marido","mamae","mae","pai","irmã","filho","tio","esposa","casamento","amor","nenem","sogra","sogro"],
+      "es": ["tía","bebé","hermano","papá","hija","familia","abuela","abuelo","esposo","mamá","madre","padre","hermana","hijo","tío","esposa","boda","amor"],
+      "it": ["zia","bambino","fratello","papà","figlia","famiglia","nonna","nonno","marito","mamma","madre","padre","sorella","figlio","zio","moglie","amore"],
+      "ja": ["おばさん","赤ちゃん","兄弟","お父さん","娘","家族","おばあちゃん","おじいちゃん","夫","お母さん","姉妹","息子","おじさん","妻","愛"],
+      "ar": ["عمة","طفل","أخ","أب","ابنة","عائلة","جدة","جد","زوج","أم","أخت","ابن","عم","زوجة","حب"]
+    },
+    "emotions": {
+      "en": ["love","hate","happy","sad","angry","fear","joy","hope","peace","rage","calm","trust","pride"],
+      "pt_br": ["alegria","medo","raiva","depressao","amor","odio","feliz","triste","esperanca","paz","furia","calma","orgulho","saudade","paixao","carinho","ansiedade"],
+      "es": ["amor","odio","feliz","triste","miedo","alegría","esperanza","paz","rabia","calma","orgullo","pasión"],
+      "fr": ["amour","haine","heureux","triste","peur","joie","espoir","paix","rage","calme","fierté","passion"],
+      "de": ["liebe","hass","glücklich","traurig","angst","freude","hoffnung","frieden","wut","ruhe","stolz"]
+    },
+    "date_tokens": {
+      "en": {"months_full":["january","february","march","april","may","june","july","august","september","october","november","december"],"months_abbr":["jan","feb","mar","apr","may","jun","jul","aug","sep","oct","nov","dec"],"days_full":["monday","tuesday","wednesday","thursday","friday","saturday","sunday"],"days_abbr":["mon","tue","wed","thu","fri","sat","sun"]},
+      "pt_br": {"months_full":["janeiro","fevereiro","março","marco","abril","maio","junho","julho","agosto","setembro","outubro","novembro","dezembro"],"months_abbr":["jan","fev","mar","abr","mai","jun","jul","ago","set","out","nov","dez"],"days_full":["segunda","terça","terca","quarta","quinta","sexta","sabado","domingo"],"days_abbr":["seg","ter","qua","qui","sex","sab","dom"]},
+      "fr": {"months_full":["janvier","février","fevrier","mars","avril","mai","juin","juillet","août","aout","septembre","octobre","novembre","décembre","decembre"],"months_abbr":["janv","fevr","mars","avr","mai","juin","juill","aout","sept","oct","nov","dec"],"days_full":["lundi","mardi","mercredi","jeudi","vendredi","samedi","dimanche"],"days_abbr":["lun","mar","mer","jeu","ven","sam","dim"]},
+      "nl": {"months_full":["januari","februari","maart","april","mei","juni","juli","augustus","september","oktober","november","december"],"months_abbr":["jan","feb","mrt","apr","mei","jun","jul","aug","sep","okt","nov","dec"],"days_full":["maandag","dinsdag","woensdag","donderdag","vrijdag","zaterdag","zondag"],"days_abbr":["maa","din","woe","don","vri","zat","zon"]},
+      "de": {"months_full":["januar","februar","märz","maerz","april","mai","juni","juli","august","september","oktober","november","dezember"],"months_abbr":["jan","feb","mär","apr","mai","jun","jul","aug","sep","okt","nov","dez"],"days_full":["montag","dienstag","mittwoch","donnerstag","freitag","samstag","sonntag"],"days_abbr":["mo","di","mi","do","fr","sa","so"]},
+      "es": {"months_full":["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"],"months_abbr":["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"],"days_full":["lunes","martes","miércoles","miercoles","jueves","viernes","sábado","sabado","domingo"],"days_abbr":["lun","mar","mie","jue","vie","sab","dom"]},
+      "it": {"months_full":["gennaio","febbraio","marzo","aprile","maggio","giugno","luglio","agosto","settembre","ottobre","novembre","dicembre"],"months_abbr":["gen","feb","mar","apr","mag","giu","lug","ago","set","ott","nov","dic"],"days_full":["lunedì","martedì","mercoledì","giovedì","venerdì","sabato","domenica"],"days_abbr":["lun","mar","mer","gio","ven","sab","dom"]},
+      "tr": {"months_full":["ocak","şubat","mart","nisan","mayıs","haziran","temmuz","ağustos","eylül","ekim","kasım","aralık"],"months_abbr":["oca","şub","mar","nis","may","haz","tem","ağu","eyl","eki","kas","ara"]},
+      "ru": {"months_full":["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"]},
+      "ja": {"months_full":["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"]}
+    },
+    "zodiac": {
+      "western": ["aries","taurus","gemini","cancer","leo","virgo","libra","scorpio","sagittarius","capricorn","aquarius","pisces"],
+      "chinese": ["rat","ox","tiger","rabbit","dragon","snake","horse","goat","monkey","rooster","dog","pig"],
+      "chinese_synonyms": {"rat":["mouse"],"goat":["sheep","ram"],"pig":["boar"],"rooster":["cock","chicken"],"rabbit":["hare","bunny"]},
+      "note": "Chinese zodiac and synonyms inspired by BEWGor"
+    },
+    "horoscope_stones": {
+      "western_by_month": ["garnet","amethyst","aquamarine","diamond","emerald","pearl","ruby","peridot","sapphire","opal","topaz","tanzanite"],
+      "hindu_by_month": ["garnet","amethyst","bloodstone","diamond","agate","alexandrite","ruby","sardonyx","sapphire","opal","topaz","zircon"],
+      "note": "Birthstone lists from BEWGor"
+    },
+    "demonym_patterns": {
+      "note": "From BEWGor: nationality/ethnicity/demonym as password element. Lowercase + Title Case.",
+      "examples": ["american","brazilian","british","chinese","french","german","indian","italian","japanese","korean","mexican","portuguese","russian","spanish","turkish"]
+    },
+    "soccer_clubs_intl": {
+      "en_premier": ["Arsenal","Chelsea","Liverpool","ManCity","ManUnited","Tottenham","Everton","Leeds","Newcastle","WestHam"],
+      "es_laliga": ["RealMadrid","Barcelona","AtleticoMadrid","Sevilla","Valencia","RealSociedad","Betis","Villarreal"],
+      "it_seriea": ["Juventus","Milan","Inter","Roma","Napoli","Lazio","Fiorentina","Atalanta"],
+      "de_bundesliga": ["Bayern","Dortmund","Leipzig","Leverkusen","Schalke","Frankfurt","Wolfsburg"],
+      "fr_ligue1": ["PSG","Marseille","Lyon","Monaco","Lille","Nice","Rennes"],
+      "pt_liga": ["Benfica","Porto","Sporting","Braga","Vitoria"],
+      "ar_futbol": ["BocaJuniors","RiverPlate","SanLorenzo","Racing","Independiente"],
+      "mx_ligamx": ["America","Chivas","Cruz Azul","Pumas","Tigres","Monterrey"]
+    }
+  },
+
+  "charsets": {
+    "note": "Consolidated charset definitions from Crunch, python-wordlist-generator, GoblinWordGenerator, and others.",
+    "lowercase": "abcdefghijklmnopqrstuvwxyz",
+    "uppercase": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "digits": "0123456789",
+    "symbols_crunch": "!@#$%^&*()-_+=~`[]{}|\\:;\"'<>,.?/ ",
+    "symbols_common": "!@#$%&*",
+    "symbols_owasp": " !\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+    "symbols_goblin": "!\\][/?.,~-=\";:><@#$%&*()_+' ",
+    "printable_no_whitespace": "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~",
+    "hex_lower": "0123456789abcdef",
+    "hex_upper": "0123456789ABCDEF",
+    "numeric_padded_4": "0000-9999"
+  },
+
+  "profiling_fields": {
+    "note": "Consolidated from cupp, elpscrk, BEWGor — fields used for targeted password generation",
+    "cupp": ["first_name","last_name","nickname","birthdate_DDMMYYYY","partner_name","partner_nickname","partner_birthdate","child_name","child_nickname","child_birthdate","pet_name","company_name","extra_keywords"],
+    "elpscrk": ["first_name","last_name","birthday_dd_mm_yyyy","phone_number_with_country","old_passwords"],
+    "bewgor": ["first_name","last_name","nickname","significant_other_name","significant_other_nickname","birthdays_DDMMYYYY","extra_birthdays","gender","nationality","ethnicity","city_of_birth","pet_names","extra_words","extra_numbers"],
+    "combined_superset": [
+      "first_name","last_name","middle_name","nickname","birthdate","partner_name","partner_nickname",
+      "partner_birthdate","child_name","child_nickname","child_birthdate","pet_name","company_name",
+      "phone_number","old_passwords","gender","nationality","ethnicity","city_of_birth",
+      "social_media_handles","extra_keywords","extra_numbers"
+    ]
   },
 
   "cultural_phrases_br": {
@@ -536,5 +778,91 @@
       "espiritoSanto","aleluia","Maranata","fogoDoEspirito","nomeDeJesus",
       "sangueDeJesus","missericordiaDeJesus","louvadoSeja","gloriaDeDeus"
     ]
+  },
+
+  "cultural_phrases_intl": {
+    "en_us": {
+      "popular": ["letmein","iloveyou","trustno1","sunshine","monkey","shadow","master","dragon","mustang","access","password","welcome","hello","freedom","charlie","baseball","football","batman","superman","starwars"],
+      "expressions": ["YOLO","FOMO","NoCapFr","SkibidiToilet","RizzKing","BetBet","OnGod","NoCap","LetsGooo","SendIt","GoHardOrGoHome","LiveLaughLove","DreamBig","NeverGiveUp"]
+    },
+    "es_latam": {
+      "popular": ["teamo","amor","corazon","estrella","princesa","hermosa","familia","amigos","libertad","esperanza","tiamo","cariño","carino","bonita","soledad","siempre","contigo"],
+      "expressions": ["DaleQueVaPibe","VamosArgentina","ArrancaLaPasion","CheTodoJoya","NoManches","OralePues","VivaLaVida"]
+    },
+    "fr": {
+      "popular": ["amour","soleil","chocolat","papillon","doudou","chouchou","bisou","jetaime","liberté","liberte","azerty","marseille","paris"],
+      "expressions": ["CestLaVie","LaVieEnRose","OhLaLa","AllerOnYVa","JeTaime","ViveLaFrance"]
+    },
+    "de": {
+      "popular": ["liebe","schatz","sonne","stern","engel","traum","freude","glueck","blume","herz","berlin","muenchen"],
+      "expressions": ["IchLiebeDich","DasIstGut","Wunderbar","Kindergarten","Zeitgeist","Wanderlust"]
+    },
+    "it": {
+      "popular": ["amore","sole","stella","cuore","bello","bella","tesoro","dolce","gelato","roma","milano","firenze"],
+      "expressions": ["TiAmo","BellaVita","DolceVita","MammaMia","Perfetto","Bellissimo"]
+    },
+    "pt": {
+      "popular": ["amor","saudade","estrela","coração","coracao","linda","lindo","querido","felicidade","esperança","esperanca","lisboa","porto"],
+      "expressions": ["AmoDemais","SaudadeSempre","TudoBem","BelezaPura"]
+    },
+    "tr": {
+      "popular": ["aşk","ask","sevgi","güneş","gunes","yildiz","hayat","dostluk","özgürlük","ozgurluk","istanbul","ankara"],
+      "expressions": ["SeniSeviyorum","MasAllah","InsAllah","ElHamdulillah"]
+    },
+    "ru": {
+      "popular": ["любовь","солнце","звезда","сердце","радость","москва","россия","надежда","мечта"],
+      "expressions_transliterated": ["lyubov","solnce","zvezda","serdce","radost","moskva","rossiya","nadezhda","mechta"]
+    },
+    "ja": {
+      "popular": ["愛","桜","sakura","kawaii","sugoi","naruto","ganbatte","samurai","ninja","tokyo","osaka"],
+      "expressions_romaji": ["SakuraDesu","KawaiiDesu","Ganbatte","ArigatoGozaimasu","OhayoGozaimasu","KonnichiwaSekai"]
+    },
+    "ko": {
+      "popular": ["사랑","sarang","seoul","kimchi","oppa","daebak","fighting","hwaiting"],
+      "expressions_romanized": ["SarangHaeyo","KamsaHamnida","Hwaiting","Daebak","Aigoo"]
+    },
+    "zh": {
+      "popular": ["爱","龙","long","dragon","panda","wangzhe","中国","北京","上海"],
+      "expressions_pinyin": ["WoAiNi","JiaYou","NiHao","XieXie","ZhongGuo","DaJiaHao"]
+    },
+    "hi": {
+      "popular": ["pyaar","dost","zindagi","khushi","sapna","dil","mumbai","delhi","india"],
+      "expressions_transliterated": ["MeraPyaar","ZindagiNaMilegiDobara","KuchKuchHotaHai","DilSe","JaiHind","NamasteIndia"]
+    },
+    "ar": {
+      "popular": ["حب","hub","habib","habibi","hayati","salam","nour","aman","quds","riyadh","dubai"],
+      "expressions_transliterated": ["Habibi123","Salam123","YaHayati","AllahAkbar","Bismillah","MashAllah"]
+    }
+  },
+
+  "phone_number_patterns": {
+    "note": "From pnwgen and general research — phone-as-password patterns by country",
+    "br": {"format":"+55{ddd}{8or9digits}","ddd_range":"11-99","mobile_prefix":"9","lengths":[10,11]},
+    "us": {"format":"+1{area_code}{7digits}","area_code_digits":3,"length":10},
+    "uk": {"format":"+44{area}{subscriber}","mobile_prefix":"7","length":[10,11]},
+    "de": {"format":"+49{area}{subscriber}","mobile_prefix":"1","length":[10,11,12]},
+    "fr": {"format":"+33{area}{subscriber}","mobile_prefix":"6","length":9},
+    "in": {"format":"+91{10digits}","mobile_prefix":["7","8","9"],"length":10},
+    "jp": {"format":"+81{area}{subscriber}","mobile_prefix":"90","length":[10,11]},
+    "mx": {"format":"+52{area}{8digits}","length":10},
+    "ar_country": {"format":"+54{area}{subscriber}","length":[10,11]},
+    "common_password_usage": ["last_4_digits","full_number","area_code_only","country_code_prefix"]
+  },
+
+  "default_credential_patterns": {
+    "note": "Inspired by SecLists Default-Credentials — generic default patterns by device/service type",
+    "router_defaults": {
+      "common_users": ["admin","root","user","guest","cisco","ubnt","mikrotik","support","tech"],
+      "common_passwords": ["admin","password","1234","default","pass","root","cisco","ubnt","changeme","letmein"]
+    },
+    "database_defaults": {
+      "common_users": ["sa","root","admin","postgres","mysql","oracle","sysadmin","dba","dbadmin"],
+      "common_passwords": ["","root","admin","password","sa","master","oracle","mysql","postgres","changeme"]
+    },
+    "service_defaults": {
+      "common_users": ["admin","administrator","tomcat","manager","deploy","jenkins","gitlab","ansible","nagios","zabbix"],
+      "common_passwords": ["admin","password","manager","tomcat","jenkins","changeme","s3cret","passw0rd","admin123"]
+    },
+    "ssh_top": ["root","admin","user","test","guest","ubuntu","ec2-user","centos","pi","oracle"]
   }
 }

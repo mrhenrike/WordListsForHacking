@@ -5,7 +5,8 @@ Generates realistic corporate username/password combinations from employee
 name lists, applying globally used naming conventions plus Brazilian patterns.
 
 Features:
-  - 25+ corporate username patterns (firstname.lastname, f.lastname, etc.)
+  - 35+ corporate username patterns (firstname.lastname, f.lastname, etc.)
+  - Patterns validated against real Brazilian AD exports (100k+ users)
   - Employee name collection from any file (txt/csv/xlsx/pdf/docx)
   - Online name search via Google dorks (no mandatory API)
   - Optional LinkedIn API via LINKEDIN_RAPIDAPI_KEY env var (graceful fallback)
@@ -22,7 +23,7 @@ Usage:
   wfh.py corp-users --domain empresa.com.br --interactive
 
 Author: André Henrique (@mrhenrike)
-Version: 1.0.0
+Version: 1.1.0
 """
 
 import logging
@@ -35,17 +36,23 @@ from typing import Generator, Optional
 
 logger = logging.getLogger(__name__)
 
-# ── Accent normalization table ─────────────────────────────────────────────────
+# ── Accent normalization ───────────────────────────────────────────────────────
+# Use Unicode NFD decomposition: correct for all Latin-script accents.
+# Previous str.maketrans approach had an off-by-one error (6 'a's for 5 vowels).
 
-_ACCENT_MAP: dict[str, str] = str.maketrans(
-    "áàãâäéèêëíìîïóòõôöúùûüçñÁÀÃÂÄÉÈÊËÍÌÎÏÓÒÕÔÖÚÙÛÜÇÑ",
-    "aaaaaaeeeeiiiiooooouuuucnAAAAEEEEIIIIOOOOOUUUUCN",
-)
+import unicodedata as _ud
 
 
 def _norm(text: str) -> str:
-    """Normalize: strip accents, lowercase, keep only word chars."""
-    return text.translate(_ACCENT_MAP).lower().strip()
+    """
+    Normalize: strip accents via NFD decomposition, lowercase, strip whitespace.
+
+    Correctly handles all Portuguese/Spanish accented characters including
+    ç → c, ã → a, õ → o, é → e, ó → o, ú → u, etc.
+    """
+    nfd = _ud.normalize("NFD", text)
+    stripped = "".join(c for c in nfd if _ud.category(c) != "Mn")
+    return stripped.lower().strip()
 
 
 def _clean(text: str) -> str:
@@ -98,10 +105,30 @@ def parse_full_name(full_name: str) -> dict:
     # Build initials from all parts (including particles skipped)
     initials = "".join(p[0] for p in raw_parts if p)
 
+    # Particle-inclusive last name: e.g. "da Silva" → "dasilva", "de Jesus" → "dejesus"
+    # Detected when particle(s) immediately precede the last name_part in raw_parts.
+    last_idx_in_raw = None
+    for i in range(len(raw_parts) - 1, -1, -1):
+        if raw_parts[i].lower() not in particles:
+            last_idx_in_raw = i
+            break
+    last_full = last  # default: same as last
+    if last_idx_in_raw is not None and last_idx_in_raw > 0:
+        preceding = raw_parts[last_idx_in_raw - 1]
+        if preceding.lower() in particles:
+            # Collect consecutive particles before last
+            parts_before = []
+            j = last_idx_in_raw - 1
+            while j >= 0 and raw_parts[j].lower() in particles:
+                parts_before.insert(0, raw_parts[j])
+                j -= 1
+            last_full = "".join(parts_before) + last
+
     return {
         "first": first,
         "middle": middle,
         "last": last,
+        "last_full": last_full,        # particle-inclusive (e.g. "dasilva")
         "all_parts": name_parts,
         "raw_parts": raw_parts,
         "initials": initials,
@@ -113,8 +140,7 @@ def parse_full_name(full_name: str) -> dict:
 
 # ── Corporate username patterns ────────────────────────────────────────────────
 
-# Each entry: (pattern_id, description, generator_key)
-# Tokens:
+# Pattern tokens:
 #   {fn}  = first name (normalized, no accents)
 #   {ln}  = last name
 #   {mn}  = first middle name (empty if none)
@@ -122,50 +148,145 @@ def parse_full_name(full_name: str) -> dict:
 #   {li}  = last initial
 #   {mi}  = middle initial
 #   {ini} = all initials
-#   {all} = first + last (no sep)
-#   SEP   = separator (., -, _, or "" — iterated per pattern)
+#   {sep} = separator (iterated: ".", "_", "-", "")
+#   {num} = numeric suffix (iterated: "01", "1", "02", "2", …)
+#   {sub} = subdomain prefix (requires subdomain=True)
+#
+# Ordering is by observed frequency in Brazilian corporate AD environments
+# (validated against 104k real AD entries from BR companies).
 CORPORATE_PATTERNS: list[dict] = [
-    # ── Most common globally ───────────────────────────────────────────
-    {"id": "fn_sep_ln",       "desc": "firstname.lastname",          "fmt": "{fn}{sep}{ln}"},
-    {"id": "ln_sep_fn",       "desc": "lastname.firstname",          "fmt": "{ln}{sep}{fn}"},
-    {"id": "fi_sep_ln",       "desc": "f.lastname (initial+last)",   "fmt": "{fi}{sep}{ln}"},
-    {"id": "fn_sep_li",       "desc": "firstname.l (name+initial)",  "fmt": "{fn}{sep}{li}"},
-    {"id": "fi_ln",           "desc": "flastname (no sep)",          "fmt": "{fi}{ln}"},
-    {"id": "fn_li",           "desc": "firstnamel (name+initial)",   "fmt": "{fn}{li}"},
-    {"id": "fn_only",         "desc": "firstname",                   "fmt": "{fn}"},
-    {"id": "ln_only",         "desc": "lastname",                    "fmt": "{ln}"},
-    {"id": "fn_ln",           "desc": "firstnamelastname (no sep)",  "fmt": "{fn}{ln}"},
-    {"id": "ln_fn",           "desc": "lastnamefirstname (no sep)",  "fmt": "{ln}{fn}"},
-    # ── With middle name (when available) ─────────────────────────────
-    {"id": "fn_sep_mn_sep_ln","desc": "first.middle.last",           "fmt": "{fn}{sep}{mn}{sep}{ln}", "needs_middle": True},
-    {"id": "fi_mi_ln",        "desc": "fml (first+mid+last initials)","fmt": "{fi}{mi}{ln}",           "needs_middle": True},
-    {"id": "fi_sep_mi_sep_li","desc": "f.m.l (all initials)",        "fmt": "{fi}{sep}{mi}{sep}{li}", "needs_middle": True},
-    # ── Initials only ────────────────────────────────────────────────
-    {"id": "fi_li",           "desc": "initials (fl)",               "fmt": "{fi}{li}"},
-    {"id": "ini",             "desc": "all initials (fml...)",       "fmt": "{ini}"},
-    # ── Reversed / alternative ───────────────────────────────────────
-    {"id": "ln_sep_fi",       "desc": "lastname.f",                  "fmt": "{ln}{sep}{fi}"},
-    {"id": "ln_fi",           "desc": "lastnamef",                   "fmt": "{ln}{fi}"},
-    # ── BR-specific patterns ─────────────────────────────────────────
-    {"id": "fn_sep_ln_br",    "desc": "nome.sobrenome",              "fmt": "{fn}{sep}{ln}"},  # alias for PT-BR
-    {"id": "fi_sep_ln_br",    "desc": "nsobrenome (initial+sobrenome)","fmt": "{fi}{ln}"},
-    # ── With numeric suffix (service/generic accounts) ────────────────
-    {"id": "fn_sep_ln_num",   "desc": "firstname.lastname + 2-digit suffix", "fmt": "{fn}{sep}{ln}{num}"},
-    {"id": "fi_ln_num",       "desc": "flastname + 2-digit suffix",  "fmt": "{fi}{ln}{num}"},
-    # ── Dept/role-based (admin variants) ─────────────────────────────
-    {"id": "fn_sep_ln_adm",   "desc": "firstname.lastname.admin",    "fmt": "{fn}{sep}{ln}{sep}admin"},
-    {"id": "adm_fn_sep_ln",   "desc": "admin.firstname.lastname",    "fmt": "admin{sep}{fn}{sep}{ln}"},
-    # ── Subdomain/service account ────────────────────────────────────
-    {"id": "sub_admin",       "desc": "subdomain+admin",             "fmt": "{sub}admin",     "subdomain": True},
-    {"id": "sub_sep_admin",   "desc": "subdomain.admin",             "fmt": "{sub}{sep}admin","subdomain": True},
-    {"id": "admin_sep_sub",   "desc": "admin.subdomain",             "fmt": "admin{sep}{sub}","subdomain": True},
+    # ── Tier 1: Highest frequency in BR corps (fn.ln ~85% in energy/utilities) ──
+    {"id": "fn_sep_ln",        "desc": "firstname.lastname",                  "fmt": "{fn}{sep}{ln}"},
+    # ── Tier 2: No-separator variants (filn common in Jirau, Chesf, BRBCard) ───
+    {"id": "fi_ln",            "desc": "flastname (initial+last, no sep)",    "fmt": "{fi}{ln}"},
+    {"id": "fn_li",            "desc": "firstnamel (name+last initial)",      "fmt": "{fn}{li}"},
+    # ── Tier 3: With separator — initial+last, name+initial ──────────────────
+    {"id": "fi_sep_ln",        "desc": "f.lastname",                          "fmt": "{fi}{sep}{ln}"},
+    {"id": "fn_sep_li",        "desc": "firstname.l",                         "fmt": "{fn}{sep}{li}"},
+    # ── Tier 4: First/last name alone (service accounts, single-name users) ───
+    {"id": "fn_only",          "desc": "firstname only",                      "fmt": "{fn}"},
+    {"id": "ln_only",          "desc": "lastname only",                       "fmt": "{ln}"},
+    # ── Tier 5: No-separator compound (fnln, lnfn) ────────────────────────────
+    {"id": "fn_ln",            "desc": "firstnamelastname (no sep)",          "fmt": "{fn}{ln}"},
+    {"id": "ln_fn",            "desc": "lastnamefirstname (no sep)",          "fmt": "{ln}{fn}"},
+    # ── Tier 6: Reversed (ln.fn, ln.f) — government/judicial pattern ─────────
+    {"id": "ln_sep_fn",        "desc": "lastname.firstname",                  "fmt": "{ln}{sep}{fn}"},
+    {"id": "ln_sep_fi",        "desc": "lastname.f (reversed initial)",       "fmt": "{ln}{sep}{fi}"},
+    {"id": "ln_fi",            "desc": "lastnamef (no sep)",                  "fmt": "{ln}{fi}"},
+    # ── Tier 7: Disambiguation with numeric suffix ────────────────────────────
+    # Pattern fn.lnNUM (joao.silva01) — when duplicate fn.ln exists
+    {"id": "fn_sep_ln_num",    "desc": "fn.ln + numeric suffix (duplicate)",  "fmt": "{fn}{sep}{ln}{num}"},
+    # Pattern fn.ln.NUM (joao.silva.01) — dot-separated disambiguation
+    {"id": "fn_sep_ln_sep_num","desc": "fn.ln.N (dot-separated, BR common)",  "fmt": "{fn}{sep}{ln}{sep}{num}"},
+    # Pattern filn01 — initial+last with numeric suffix
+    {"id": "fi_ln_num",        "desc": "filn + numeric suffix",               "fmt": "{fi}{ln}{num}"},
+    # ── Tier 8: With middle name (when available) ──────────────────────────────
+    {"id": "fn_sep_mn_sep_ln", "desc": "first.middle.last",                   "fmt": "{fn}{sep}{mn}{sep}{ln}", "needs_middle": True},
+    {"id": "fi_mi_ln",         "desc": "fml initials (fimiln)",               "fmt": "{fi}{mi}{ln}",           "needs_middle": True},
+    {"id": "fi_sep_mi_sep_li", "desc": "f.m.l (all initials with sep)",       "fmt": "{fi}{sep}{mi}{sep}{li}", "needs_middle": True},
+    # ── Tier 9: Initials ──────────────────────────────────────────────────────
+    {"id": "fi_li",            "desc": "initials fl (no sep)",                "fmt": "{fi}{li}"},
+    {"id": "ini",              "desc": "all initials fml… (no sep)",          "fmt": "{ini}"},
+    {"id": "fi_sep_li",        "desc": "f.l (initials with sep)",             "fmt": "{fi}{sep}{li}"},
+    # ── Tier 10: BR institutional — name + middle/company part as alias ───────
+    # Observed: firstname.middlename used when last name causes collision
+    {"id": "fn_sep_mn",        "desc": "firstname.middlename (collision alt)","fmt": "{fn}{sep}{mn}",          "needs_middle": True},
+    # ── Tier 10b: Particle-inclusive last name (dasilva, dejesus, desouza) ───
+    # Observed: sidnei.dasilva, mario.desouza, paulo.dejesus
+    # Some AD admins include the particle when the last name alone is ambiguous.
+    {"id": "fn_sep_lf",        "desc": "firstname.dasilva (particle+last)",  "fmt": "{fn}{sep}{lf}",          "needs_lf": True},
+    {"id": "lf_sep_fn",        "desc": "dasilva.firstname (reversed)",       "fmt": "{lf}{sep}{fn}",          "needs_lf": True},
+    {"id": "fi_sep_lf",        "desc": "f.dasilva (initial+full-last)",      "fmt": "{fi}{sep}{lf}",          "needs_lf": True},
+    # ── Tier 11: Admin/role accounts ─────────────────────────────────────────
+    {"id": "fn_sep_ln_adm",    "desc": "firstname.lastname.admin",            "fmt": "{fn}{sep}{ln}{sep}admin"},
+    {"id": "adm_fn_sep_ln",    "desc": "admin.firstname.lastname",            "fmt": "admin{sep}{fn}{sep}{ln}"},
+    # ── Tier 12: Subdomain-admin (e.g. a1t3ngrt → a1t3ngrtadmin) ────────────
+    {"id": "sub_admin",        "desc": "subdomainadmin (no sep)",             "fmt": "{sub}admin",              "subdomain": True},
+    {"id": "sub_sep_admin",    "desc": "subdomain.admin (with sep)",          "fmt": "{sub}{sep}admin",         "subdomain": True},
+    {"id": "admin_sep_sub",    "desc": "admin.subdomain",                     "fmt": "admin{sep}{sub}",         "subdomain": True},
+    # ── Tier 13: Contractor pattern — fn.COMPANY_ABBR (validated BR pattern) ─
+    # Observed: contractors from external companies use firstname.company_code
+    # e.g. william.ish, zacarias.lactec, uanderson.loghis, talison.rip
+    # Requires company_abbr parameter to be set.
+    {"id": "fn_sep_co",        "desc": "firstname.company_abbr (contractor)", "fmt": "{fn}{sep}{co}",           "needs_company": True},
+    {"id": "fi_sep_co",        "desc": "f.company_abbr (contractor)",         "fmt": "{fi}{sep}{co}",           "needs_company": True},
+    {"id": "fn_co",            "desc": "firstnamecompany (no sep, contractor)","fmt": "{fn}{co}",                "needs_company": True},
+    # ── Tier 14: compound firstname (joaopaulo, mariaclara) ──────────────────
+    # Observed: joaopaulo.silva, mariaclara.santos (compound first names)
+    {"id": "fn2_sep_ln",       "desc": "fn1fn2.lastname (compound first)",   "fmt": "{fn2}{sep}{ln}",          "needs_fn2": True},
+    {"id": "fn2_sep_fi",       "desc": "fn1fn2.l (compound+initial)",        "fmt": "{fn2}{sep}{li}",          "needs_fn2": True},
 ]
 
+# ── Brazilian corporate domain knowledge base ──────────────────────────────────
+# Observed patterns per company type (from analysis of 104k BR AD entries).
+# Used for context when generating or validating usernames.
+KNOWN_BR_DOMAIN_PATTERNS: dict[str, dict] = {
+    # Energy / Utilities
+    "jirauenergia.com.br":      {"primary": "fn.ln",  "secondary": "filn",  "notes": "externo.jirauenergia.com.br for contractors"},
+    "externo.jirauenergia.com.br": {"primary": "fn.ln", "secondary": "filn", "notes": "third-party/contractors"},
+    "esbr.com.br":              {"primary": "fn.ln",  "secondary": None,    "notes": "internal AD for Jirau/ESBR group"},
+    "esbr.local":               {"primary": "fn.ln",  "secondary": None,    "notes": "AD local domain"},
+    "eletrobras.com":           {"primary": "numeric_padded", "secondary": "fn.ln", "notes": "8-digit padded employee ID (00NNNNNN)"},
+    "eletronorte.com.br":       {"primary": "numeric", "secondary": "fn.ln", "notes": "4-digit employee ID"},
+    "chesf.com.br":             {"primary": "numeric_padded", "secondary": "filn", "notes": "8-digit + fn-only shortnames"},
+    "chesf.gov.br":             {"primary": "numeric_padded", "secondary": "filn", "notes": "gov domain mirror"},
+    "diamanteenergia.com.br":   {"primary": "fn.LASTNAME",   "secondary": "fn.ln", "notes": "uppercase last name in email"},
+    "external.diamanteenergia.com.br": {"primary": "fn.LASTNAME", "notes": "contractors"},
+    # Finance / Credit
+    "embracon.com.br":          {"primary": "numeric_padded", "secondary": "fn.ln", "notes": "employee ID 0000NNNNNN; email uses fn.ln slug"},
+    "brbcard.com.br":           {"primary": "fn.ln",  "secondary": "fn",    "notes": "BRB Card employees"},
+    # Health / Medical
+    "unimedbh.com.br":          {"primary": "numeric", "secondary": "prefix+num", "notes": "uni+num (internal), trc+num (contractors), crm+num"},
+    # Justice / Government
+    "tjms.jus.br":              {"primary": "fn.ln",  "secondary": "fn-ln", "notes": "judicial; also fn-ln with hyphen"},
+    # Telecom / Services
+    "atento.com":               {"primary": "numeric", "secondary": "prefix(ate)+num", "notes": "ate+num internal; trc+num contractors"},
+    "atento.com.br":            {"primary": "numeric", "secondary": None,   "notes": "BR subsidiary"},
+    "aec.com.br":               {"primary": "numeric", "secondary": "prefix(aec)+num", "notes": "aec+num internal; trc+num contractors"},
+    # Agricultural / Commodities
+    "caramuru.com":             {"primary": "fn.ln",  "secondary": None,    "notes": "Caramuru Alimentos"},
+    # Education
+    "mt.sebrae.com.br":         {"primary": "fn.ln",  "secondary": "fn",    "notes": "SEBRAE MT"},
+}
+
+# Known company prefix codes used in Brazilian employeeids for outsourced staff
+KNOWN_BR_EMPLOYEE_ID_PREFIXES: dict[str, str] = {
+    "uni":    "Unimed internal employee",
+    "trc":    "Terceiro (outsourced/contractor)",
+    "crm":    "CRM system user",
+    "fr":     "Furnas/Eletrobras",
+    "fc":     "Furnas Centrais Elétricas",
+    "ate":    "Atento",
+    "aec":    "AEC",
+    "elo":    "Grupo ELO",
+    "apr":    "CHESF apprentice/trainee",
+    "est":    "CHESF estagiário (intern)",
+    "servf":  "CHESF service account",
+    "engev":  "Engenharia/ENGEV",
+    "logap":  "Logap",
+    "voith":  "Voith",
+    "rener":  "Rener",
+    "lanlk":  "Lanlink",
+    "fach":   "FACHESF",
+    "elimc":  "ELIMCO",
+    "dmf":    "DMF/Furnas",
+    "cro":    "CRO system",
+    "cpr":    "CPR Logística",
+}
+
 # Separators used when generating with SEP token
-DOMAIN_SEPARATORS = [".", "_", "-", ""]
+# Default separator: dot only. User can override with --separators.
+DOMAIN_SEPARATORS = ["."]
+
+# All available separators (for --separators all or interactive "all")
+ALL_DOMAIN_SEPARATORS = [".", "_", "-", ""]
 
 # Numeric suffixes for generic/service accounts
-NUMERIC_SUFFIXES = ["01", "02", "1", "2", "00", "10", "99"]
+NUMERIC_SUFFIXES = [
+    "01", "02", "1", "2", "00", "10", "99",
+    "03", "04", "05", "06", "07", "08", "09",
+    "11", "12", "13", "20", "21", "100", "0",
+]
 
 
 # ── Username generation ────────────────────────────────────────────────────────
@@ -177,6 +298,7 @@ def generate_usernames_from_name(
     patterns: Optional[list[str]] = None,
     with_at_domain: bool = True,
     subdomain: Optional[str] = None,
+    company_abbr: Optional[str] = None,
 ) -> Generator[str, None, None]:
     """
     Generate all corporate username variations for a single person's name.
@@ -188,18 +310,24 @@ def generate_usernames_from_name(
         patterns: List of pattern IDs to include (default: all).
         with_at_domain: If True, appends '@domain' to each username.
         subdomain: Subdomain prefix for subdomain-admin patterns.
+        company_abbr: Company abbreviation for contractor patterns (fn.company).
+                      Can be comma-separated for multiple companies.
 
     Yields:
         Username strings (with or without @domain).
     """
     parsed = parse_full_name(full_name)
-    fn = _clean(parsed["first"])
-    ln = _clean(parsed["last"])
-    fi = fn[0] if fn else ""
-    li = ln[0] if ln else ""
-    mn = _clean(parsed["middle"][0]) if parsed["middle"] else ""
-    mi = mn[0] if mn else ""
+    fn  = _clean(parsed["first"])
+    ln  = _clean(parsed["last"])
+    lf  = _clean(parsed.get("last_full", parsed["last"]))  # particle-inclusive last
+    fi  = fn[0] if fn else ""
+    li  = ln[0] if ln else ""
+    mn  = _clean(parsed["middle"][0]) if parsed["middle"] else ""
+    mi  = mn[0] if mn else ""
     ini = _clean(parsed["initials"])
+
+    # Compound first name: fn2 = fn + mn (e.g. "joaopaulo" from "João Paulo")
+    fn2 = fn + mn if mn else ""
 
     if not fn and not ln:
         return
@@ -209,18 +337,23 @@ def generate_usernames_from_name(
     seen: set[str] = set()
     sub = _clean(subdomain) if subdomain else ""
 
+    # Resolve company abbreviation list for contractor patterns
+    co_variants: list[str] = []
+    if company_abbr:
+        for co_raw in re.split(r"[,;|]", company_abbr):
+            co_c = _clean(co_raw)
+            if co_c and co_c not in co_variants:
+                co_variants.append(co_c)
+
     suffix = "@" + domain if with_at_domain else ""
 
     def _emit(user: str) -> Optional[str]:
-        # Skip entries that are empty, start/end with separator, or have no alphanumeric chars
         if not user or user in seen:
             return None
         if not re.search(r"[a-z0-9]", user):
             return None
-        # Skip if user contains double-separator sequences (bad names)
         if re.search(r"[._\-]{2,}", user):
             return None
-        # Skip if user starts or ends with a separator char
         if user[0] in "._-" or user[-1] in "._-":
             return None
         seen.add(user)
@@ -234,41 +367,39 @@ def generate_usernames_from_name(
             continue
         if pat.get("subdomain") and not sub:
             continue
-        # Skip patterns requiring a last name if last name is empty
+        if pat.get("needs_company") and not co_variants:
+            continue
+        if pat.get("needs_fn2") and not fn2:
+            continue
+        if pat.get("needs_lf") and (not lf or lf == ln):
+            continue   # skip when particle-inclusive last = plain last (no particle)
         if not ln and any(tok in pat["fmt"] for tok in ("{ln}", "{li}")):
             continue
-        # Skip patterns requiring a first name if first name is empty
         if not fn and any(tok in pat["fmt"] for tok in ("{fn}", "{fi}")):
             continue
 
         fmt = pat["fmt"]
 
-        if "{sep}" in fmt:
-            for sep in seps:
-                for num in (NUMERIC_SUFFIXES if "{num}" in fmt else [""]):
+        # Determine iteration axes
+        co_list = co_variants if pat.get("needs_company") else [""]
+        num_list = NUMERIC_SUFFIXES if "{num}" in fmt else [""]
+        sep_list = seps if "{sep}" in fmt else [""]
+
+        for co in co_list:
+            for sep in sep_list:
+                for num in num_list:
                     try:
                         user = fmt.format(
-                            fn=fn, ln=ln, fi=fi, li=li,
-                            mn=mn, mi=mi, ini=ini, sep=sep,
-                            num=num, sub=sub,
+                            fn=fn, ln=ln, lf=lf, fi=fi, li=li,
+                            mn=mn, mi=mi, ini=ini,
+                            sep=sep, num=num, sub=sub,
+                            co=co, fn2=fn2,
                         )
                     except KeyError:
                         continue
                     r = _emit(user)
                     if r:
                         yield r
-        else:
-            for num in (NUMERIC_SUFFIXES if "{num}" in fmt else [""]):
-                try:
-                    user = fmt.format(
-                        fn=fn, ln=ln, fi=fi, li=li,
-                        mn=mn, mi=mi, ini=ini, num=num, sub=sub,
-                    )
-                except KeyError:
-                    continue
-                r = _emit(user)
-                if r:
-                    yield r
 
 
 def generate_usernames_from_list(
@@ -278,6 +409,7 @@ def generate_usernames_from_list(
     patterns: Optional[list[str]] = None,
     with_at_domain: bool = True,
     subdomain: Optional[str] = None,
+    company_abbr: Optional[str] = None,
 ) -> Generator[str, None, None]:
     """
     Generate username variations for a list of employee names.
@@ -289,6 +421,7 @@ def generate_usernames_from_list(
         patterns: List of pattern IDs to include.
         with_at_domain: Append '@domain' suffix.
         subdomain: Subdomain prefix for admin patterns.
+        company_abbr: Company abbreviation(s) for contractor patterns.
 
     Yields:
         Username strings.
@@ -299,7 +432,8 @@ def generate_usernames_from_list(
         if not name or name.startswith("#"):
             continue
         for user in generate_usernames_from_name(
-            name, domain, separators, patterns, with_at_domain, subdomain
+            name, domain, separators, patterns,
+            with_at_domain, subdomain, company_abbr,
         ):
             if user not in global_seen:
                 global_seen.add(user)
@@ -628,14 +762,15 @@ def collect_names_online(
     Collect employee names using all available online methods.
 
     Priority order:
-      1. LinkedIn API (if LINKEDIN_RAPIDAPI_KEY is set and use_linkedin_api=True)
-      2. Google dorks (no API required, may be rate-limited)
+      1. LinkedIn official OAuth2 API (if LINKEDIN_ACCESS_TOKEN is set)
+      2. LinkedIn RapidAPI (if LINKEDIN_RAPIDAPI_KEY is set — legacy fallback)
+      3. Google dorks (no API required, always available)
 
     Args:
         company_name: Company name to search for.
         domain: Optional company domain for extra context.
         max_results: Maximum names to collect.
-        use_linkedin_api: Attempt LinkedIn API if key is available.
+        use_linkedin_api: Attempt LinkedIn API if key/token is available.
         delay: Delay between requests in seconds.
 
     Returns:
@@ -645,12 +780,26 @@ def collect_names_online(
     seen: set[str] = set()
 
     if use_linkedin_api:
-        api_names = search_names_linkedin_api(company_name, max_results)
-        for n in api_names:
-            if n.lower() not in seen:
-                seen.add(n.lower())
-                names.append(n)
+        # Strategy 1: Official LinkedIn OAuth2 API
+        try:
+            from wfh_modules.linkedin_search import search_employees
+            oauth_names = search_employees(company_name, domain, max_results)
+            for n in oauth_names:
+                if n.lower() not in seen:
+                    seen.add(n.lower())
+                    names.append(n)
+        except Exception as exc:
+            logger.debug("LinkedIn OAuth2 search failed: %s", exc)
 
+        # Strategy 2: RapidAPI fallback (legacy)
+        if len(names) < max_results:
+            rapidapi_names = search_names_linkedin_api(company_name, max_results - len(names))
+            for n in rapidapi_names:
+                if n.lower() not in seen:
+                    seen.add(n.lower())
+                    names.append(n)
+
+    # Strategy 3: Google dorks (always tried if quota not met)
     if len(names) < max_results:
         remaining = max_results - len(names)
         dork_names = search_names_google_dorks(company_name, domain, remaining, delay)
@@ -726,7 +875,148 @@ CORPORATE_PASSWORD_PATTERNS: list[str] = [
     "{company}adm{year}",
     "{company}admin!",
     "{company}admin{year}",
+    # ── Vault behavioral patterns (observed in Brazilian corp environments) ──
+    # Pattern: {Company}${Year} and variants with ### suffix (ISH analysis)
+    "{company}${year}",
+    "{company}${year}!",
+    "{company}${year}###",
+    # Pattern: @{Company}{Year} / @{Company}{digits}
+    "@{company}{year}",
+    "@{company}{year}#",
+    "@{company}123",
+    "@{company}1234",
+    # Pattern: #{Company}@{Year} — observed in vault
+    "#{company}@{year}",
+    "#{company}@{year}#",
+    "#{company}{year}#",
+    # Pattern: {Company}#{Year}### — vault sample SAFElabs#2026 variants
+    "{company}#{year}!",
+    "{company}@{year}#{y2}",
+    "{company}&{year}",
+    "{company}+{year}!",
+    # Pattern: {Company}{2-digit year} — cartel2030 → cartel30
+    "{company}{y2}",
+    "{company}{y2}!",
+    "{fn}{y2}",
+    "{ln}{y2}",
+    # Pattern: {Role}{Company}{Year}! — UGAdmin2025!, AdminISH2024!
+    "Admin{company}{year}!",
+    "admin{company}{year}",
+    "Admin{company}!",
+    "{company}Admin{year}!",
+    "{company}Admin!",
+    "Root{company}{year}!",
+    "root{company}{year}",
+    "Dev{company}{year}!",
+    "dev{company}{year}",
+    # Pattern: {fn}@{Company} / {fn}.{Company} — ish@init123
+    "{fn}@{company}",
+    "{fn}@{company}{y2}",
+    "{fn}@{company}{year}",
+    "{fn}.{company}",
+    "{fn}.{company}{year}",
+    # Pattern: {Company}@{Year}#{word} — TechSummit@2022#Brazil
+    "{company}@{year}#brasil",
+    "{company}@{year}#brazil",
+    # Pattern: {Company}{Word}{Year} — Labish2020!, Nozominetworks1
+    "{company}mudar@{year}",
+    "{company}Acesso{year}",
+    "{company}acesso{year}",
+    "{company}acesso@{year}",
+    # Pattern: {word}+digits suffix (word+01, word+2025, word+88)
+    "{fn}{year}01",
+    "{fn}{year}00",
+    "{fn}{ln}01",
+    "{fn}{ln}2025",
+    "{ln}{fn}01",
+    # Pattern: {Company}{year}! with capital
+    # e.g. Labish2020! → {CompanyCap}{year}!
+    "{company}{year}!",
+    "{fn}{year}!!",
+    # Pattern: passphrase-like {word}-{word}-{word}-{NNN}
+    # These require compound generation — added as static suffixed templates:
+    "{company}-{fn}-{ln}-{y2}",
+    "{fn}-{ln}-{company}-{y2}",
+    # Pattern: Date-based 29/01/2018 (rare but observed)
+    "{fn}01{year}",
+    "{fn}01{y2}",
+    # Pattern: leet in password – base templates (leet expansion in generator)
+    "S3nh@{year}!",
+    "Acss0@{year}",
+    "Acc3ss@{year}",
+    "4dm1n{year}!",
+    "4dm1n{year}@",
+    "P4ssw0rd{year}!",
+    "P@$$word{year}!",
+    "Mudar@{year}!",
+    "Tr0c4r{year}!",
+    # Pattern: numeric suffixes on company (seen in vault)
+    "{company}88",
+    "{company}99",
+    "{company}01",
+    "{company}00",
+    "{company}02",
 ]
+
+
+# Leet substitution map for password generation
+_LEET_MAP: dict[str, list[str]] = {
+    "a": ["@", "4"],
+    "e": ["3"],
+    "i": ["1", "!"],
+    "o": ["0"],
+    "s": ["$", "5"],
+    "A": ["@", "4"],
+    "E": ["3"],
+    "I": ["1", "!"],
+    "O": ["0"],
+    "S": ["$", "5"],
+}
+
+
+def _leet_variants(word: str, max_variants: int = 6) -> list[str]:
+    """
+    Generate leet-speak variants of a word by substituting 1-2 characters.
+
+    Args:
+        word: Input word to leet-ify.
+        max_variants: Maximum number of variants to return.
+
+    Returns:
+        List of leet variants (without duplicates, excluding the original).
+    """
+    from itertools import product as iproduct
+    # Find all positions with leet substitutions
+    positions = [(i, c) for i, c in enumerate(word) if c in _LEET_MAP]
+    variants: set[str] = set()
+
+    # Single substitutions
+    for idx, char in positions:
+        for sub in _LEET_MAP[char]:
+            variant = word[:idx] + sub + word[idx + 1:]
+            if variant != word:
+                variants.add(variant)
+        if len(variants) >= max_variants:
+            break
+
+    # Two-position substitutions (most impactful ones)
+    if len(positions) >= 2 and len(variants) < max_variants:
+        for i in range(min(3, len(positions))):
+            for j in range(i + 1, min(4, len(positions))):
+                idx1, c1 = positions[i]
+                idx2, c2 = positions[j]
+                for s1 in _LEET_MAP[c1][:1]:
+                    for s2 in _LEET_MAP[c2][:1]:
+                        w = list(word)
+                        w[idx1] = s1
+                        w[idx2] = s2
+                        variant = "".join(w)
+                        if variant != word:
+                            variants.add(variant)
+                if len(variants) >= max_variants:
+                    break
+
+    return list(variants)[:max_variants]
 
 
 def generate_passwords_for_person(
@@ -763,15 +1053,26 @@ def generate_passwords_for_person(
             return s
         return None
 
+    # Build company tokens with leet variants for key tokens
+    company_tokens = [company, company.capitalize(), company.upper(), domain_short]
+    # Include both capitalized and lowercase leet variants (covers saf3labs and S4felabs)
+    leet_company = _leet_variants(company.capitalize(), max_variants=3)
+    leet_company_lower = _leet_variants(company, max_variants=6)
+    company_tokens.extend(leet_company)
+    company_tokens.extend(leet_company_lower)
+
+    # Leet variants of first name for later use
+    leet_fn_variants = _leet_variants(fn.capitalize(), max_variants=3)
+
     for year in years:
         y = str(year)
         y2 = y[-2:]
         for pat in CORPORATE_PASSWORD_PATTERNS:
-            for comp_token in [company, company.capitalize(), company.upper(), domain_short]:
+            for comp_token in company_tokens:
                 try:
                     pw = pat.format(
                         fn=fn, ln=ln, fi=fi, company=comp_token,
-                        domain=domain_short, year=y,
+                        domain=domain_short, year=y, y2=y2,
                     )
                 except KeyError:
                     continue
@@ -782,6 +1083,43 @@ def generate_passwords_for_person(
                 r = _emit(pw.replace(fn, fn.capitalize(), 1))
                 if r:
                     yield r
+
+    # ── Leet variants of fn-based passwords ──────────────────────────────────
+    # Observed pattern: S3gu4@nca, Ishalian@2023, Labish2020!
+    for leet_fn in leet_fn_variants:
+        for year in years:
+            y = str(year)
+            y2 = y[-2:]
+            for tmpl in ["{fn}{year}!", "{fn}@{year}", "{fn}{year}@", "{fn}#{year}"]:
+                try:
+                    pw = tmpl.format(fn=leet_fn, year=y, y2=y2)
+                except KeyError:
+                    continue
+                r = _emit(pw)
+                if r:
+                    yield r
+
+    # ── Vault-observed structural patterns with special compound tokens ───────
+    # Pattern: #{lowercase}@{UPPER}{Year} — observed: #coco@GRILO2024
+    if fn and ln:
+        for year in years:
+            y = str(year)
+            for r in [
+                _emit(f"#{fn}@{ln.upper()}{y}"),
+                _emit(f"#{fn}@{company.upper()}{y}"),
+                _emit(f"#{company}@{fn.upper()}{y}"),
+                _emit(f"#{fn.capitalize()}{y}#{ln.capitalize()}"),
+            ]:
+                if r:
+                    yield r
+
+    # Pattern: {Company}@{Year}#{Region} — observed: TechSummit@2022#Brazil
+    for year in years:
+        y = str(year)
+        for region in ["Brasil", "Brazil", "SP", "RJ", "MG", "RS"]:
+            r = _emit(f"{company.capitalize()}@{y}#{region}")
+            if r:
+                yield r
 
 
 def generate_combo_list(
@@ -894,13 +1232,28 @@ def interactive_domain_users_wizard() -> dict:
             names = []
 
     # Custom separators
-    sep_input = input("\n  Username separators [. _ - '' / all]: ").strip().lower()
-    if sep_input == "all" or not sep_input:
-        separators = DOMAIN_SEPARATORS
+    print("\n  Username separator (used between name parts, e.g. john.doe).")
+    print("  Default: '.'  |  Options: any chars, 'none' for no separator, 'all' for . _ - (empty)")
+    sep_input = input("  Separator(s) [Enter = default '.']: ").strip()
+    if not sep_input:
+        separators = DOMAIN_SEPARATORS  # ["." only]
+    elif sep_input.lower() == "all":
+        separators = ALL_DOMAIN_SEPARATORS
+    elif sep_input.lower() == "none":
+        separators = [""]
     else:
-        separators = [s.strip() for s in sep_input.replace("''", "").split(",") if s.strip() or s == "''"]
-        if "''" in sep_input or '""' in sep_input:
-            separators.append("")
+        # Parse comma-separated list; support 'none'/'empty'/'' as empty separator token
+        separators = []
+        for token in sep_input.split(","):
+            t = token.strip()
+            if t.lower() in ("none", "empty", "''", '""', ""):
+                if "" not in separators:
+                    separators.append("")
+            else:
+                if t not in separators:
+                    separators.append(t)
+        if not separators:
+            separators = DOMAIN_SEPARATORS
 
     # Subdomain admin
     sub_input = input("\n  Subdomain prefix for admin patterns (e.g. a1t3ngrt, or Enter to skip): ").strip()

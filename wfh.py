@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-wfh.py — WordList For Hacking v1.5.0
+wfh.py — WordList For Hacking v2.0.0
 
 Unified wordlist generation tool for pentest and red team operations.
 Supports: charset, pattern, profile, corp, phone, scrape, ocr, extract,
-leet, xor, analyze, merge, dns, pharma, sanitize, reverse.
+leet, xor, analyze, merge, dns, pharma, sanitize, reverse, mangle.
 
 Usage:
   python wfh.py                              # interactive menu
@@ -15,26 +15,33 @@ Usage:
   python wfh.py phone --country brazil --state SP
   python wfh.py phone --ddi 55 --ddd 11 --type mobile
   python wfh.py scrape https://site.com      # web scraping
+  python wfh.py scrape https://site.com --with-numbers --with-spaces
+  python wfh.py scrape --urls-file urls.txt  # multi-URL scraping
   python wfh.py ocr image.png               # OCR text extraction
   python wfh.py extract file1.pdf file2.xlsx
   python wfh.py leet word -m medium         # leet speak variants
   python wfh.py xor --brute HEXSTRING       # XOR brute-force
   python wfh.py analyze list.lst            # statistical analysis
-  python wfh.py merge l1.lst l2.lst         # merge and deduplication
+  python wfh.py analyze list.lst --format markdown
+  python wfh.py merge l1.lst l2.lst --sort frequency
+  python wfh.py mangle wordlist.lst         # hashcat-style mangling rules
   python wfh.py dns -w words.lst -d company.com
   python wfh.py pharma                      # Brazilian pharmacy patterns
   python wfh.py charset --create-charset my_charset.cfg
   python wfh.py sanitize list.lst           # clean and normalize wordlist
+  python wfh.py sanitize list.lst --strip-control --sort frequency
   python wfh.py reverse list.lst            # reverse line order (tac)
 
 Author: André Henrique (@mrhenrike)
-Version: 1.2.0
+Version: 1.8.0
 """
 
 import argparse
 import logging
 import os
+import signal
 import sys
+import time
 from pathlib import Path
 from typing import Generator, Optional
 
@@ -75,7 +82,37 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "1.5.0"
+VERSION = "2.0.0"
+
+# ── Graceful shutdown ──────────────────────────────────────────────────────────
+_SHUTDOWN_REQUESTED = False
+
+def _signal_handler(signum, frame):
+    """Handle SIGINT/SIGTERM for graceful shutdown."""
+    global _SHUTDOWN_REQUESTED
+    _SHUTDOWN_REQUESTED = True
+    print(f"\n{Fore.YELLOW}[!]{Style.RESET_ALL} Shutdown requested — finishing current batch...")
+
+signal.signal(signal.SIGINT, _signal_handler)
+if hasattr(signal, "SIGTERM"):
+    signal.signal(signal.SIGTERM, _signal_handler)
+
+
+def is_shutdown() -> bool:
+    """Check if a graceful shutdown has been requested."""
+    return _SHUTDOWN_REQUESTED
+
+
+# ── Global execution context ───────────────────────────────────────────────────
+# Set once in main() from global CLI args; consumed by all handlers.
+_GLOBAL_CTX: dict = {
+    "threads":      5,      # thread count (1-300)
+    "compute_mode": "auto", # cpu | gpu | cuda | rocm | mps | auto | hybrid
+    "use_ml":       True,   # ML enabled globally
+    "limit":        0,      # global line limit (0=unlimited)
+    "timeout":      0,      # global timeout in seconds (0=unlimited)
+    "start_time":   0.0,    # epoch when execution started
+}
 
 _BANNER_ART = (
     " __          _______ _    _         \n"
@@ -114,6 +151,10 @@ MENU = f"""
   {Fore.GREEN}[15]{Style.RESET_ALL} pharma      — Brazilian pharmacy and health plan patterns
   {Fore.GREEN}[16]{Style.RESET_ALL} sanitize    — Clean wordlist (dedupe, sort, filter, remove blanks/#)
   {Fore.GREEN}[17]{Style.RESET_ALL} reverse     — Reverse line order (tac)
+  {Fore.GREEN}[18]{Style.RESET_ALL} corp-prefixes — Corporate prefix username generation
+  {Fore.GREEN}[19]{Style.RESET_ALL} train       — Train ML pattern model
+  {Fore.GREEN}[20]{Style.RESET_ALL} sysinfo     — Show hardware profile and compute backend
+  {Fore.GREEN}[21]{Style.RESET_ALL} mangle      — Apply hashcat-style mangling rules
   {Fore.GREEN}[0]{Style.RESET_ALL}  Exit
 """
 
@@ -142,9 +183,13 @@ def _write_output(
     estimate: Optional[int] = None,
     min_len: int = 0,
     max_len: int = 9999,
+    append: bool = False,
 ) -> int:
     """
     Write generator output to file or stdout with optional progress bar.
+
+    Respects global --limit (max entries), --timeout (max seconds),
+    and graceful Ctrl+C shutdown.
 
     Args:
         generator: String generator.
@@ -152,17 +197,22 @@ def _write_output(
         estimate: Entry count estimate for progress bar.
         min_len: Minimum length filter.
         max_len: Maximum length filter.
+        append: If True, open file in append mode (for --resume).
 
     Returns:
         Total entries written.
     """
     count = 0
+    limit = _GLOBAL_CTX.get("limit", 0)
+    timeout = _GLOBAL_CTX.get("timeout", 0)
+    start = _GLOBAL_CTX.get("start_time", 0.0) or time.time()
 
     if output:
         out_path = Path(output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        f = out_path.open("w", encoding="utf-8")
-        _info(f"Writing to: {output}")
+        mode = "a" if append else "w"
+        f = out_path.open(mode, encoding="utf-8")
+        _info(f"Writing to: {output}" + (" (append)" if append else ""))
     else:
         f = None  # type: ignore
 
@@ -173,6 +223,18 @@ def _write_output(
             pbar = None
 
         for word in generator:
+            if _SHUTDOWN_REQUESTED:
+                _warn(f"Graceful shutdown — wrote {count:,} entries before stopping.")
+                break
+
+            if limit and count >= limit:
+                _warn(f"Reached --limit {limit:,}. Stopping.")
+                break
+
+            if timeout and (time.time() - start) > timeout:
+                _warn(f"Reached --timeout {timeout}s. Stopping at {count:,} entries.")
+                break
+
             if not word:
                 continue
             if min_len and len(word) < min_len:
@@ -408,6 +470,7 @@ def cmd_corp_users(args: argparse.Namespace) -> None:
         collect_names_online,
         generate_subdomain_admin_users,
         DOMAIN_SEPARATORS,
+        ALL_DOMAIN_SEPARATORS,
     )
 
     params: dict = {}
@@ -447,15 +510,27 @@ def cmd_corp_users(args: argparse.Namespace) -> None:
             raw_names = args.names if isinstance(args.names, str) else ",".join(args.names)
             names.extend([n.strip() for n in raw_names.split(",") if n.strip()])
 
-        # Parse separators
+        # Parse separators — default is "." only; user can supply custom list or "all"
         sep_raw = getattr(args, "separators", None)
         if sep_raw:
-            separators = [s.strip() for s in sep_raw.split(",")]
-            # Handle empty string separator (literal '' or "")
-            if "''" in sep_raw or '""' in sep_raw:
-                separators.append("")
+            if sep_raw.strip().lower() == "all":
+                separators = ALL_DOMAIN_SEPARATORS
+            elif sep_raw.strip().lower() == "none":
+                separators = [""]
+            else:
+                separators = []
+                for token in sep_raw.split(","):
+                    t = token.strip()
+                    if t.lower() in ("none", "empty", "''", '""'):
+                        if "" not in separators:
+                            separators.append("")
+                    elif t:
+                        if t not in separators:
+                            separators.append(t)
+                if not separators:
+                    separators = DOMAIN_SEPARATORS
         else:
-            separators = DOMAIN_SEPARATORS
+            separators = DOMAIN_SEPARATORS  # default: ["."]
 
         subdomains = []
         if getattr(args, "subdomain", None):
@@ -487,8 +562,57 @@ def cmd_corp_users(args: argparse.Namespace) -> None:
         f"names: {len(params.get('names', []))} | "
         f"subdomains: {len(params.get('subdomains', []))}"
     )
-    gen = run_domain_users(params)
-    count = _write_output(gen, args.output)
+
+    # ── Threads ────────────────────────────────────────────────────────────────
+    threads = _GLOBAL_CTX.get("threads", 5)
+
+    # ── ML ranking ─────────────────────────────────────────────────────────────
+    # Respects both per-command --no-ml and global --no-ml
+    cmd_use_ml = getattr(args, "use_ml", True)
+    global_ml  = _GLOBAL_CTX.get("use_ml", True)
+    use_ml     = cmd_use_ml and global_ml
+
+    ml_model = None
+    if use_ml:
+        try:
+            from wfh_modules.ml_patterns import get_model, DEFAULT_MODEL_FILE
+            if DEFAULT_MODEL_FILE.exists():
+                ml_model = get_model()
+                if ml_model.is_trained():
+                    _info(f"ML model loaded ({ml_model._total_uid_samples:,} samples) — ranking by probability")
+                else:
+                    ml_model = None
+        except Exception:
+            ml_model = None
+
+    # ── Parallel generation across multiple names ──────────────────────────────
+    names_list = params.get("names", [])
+    if threads > 1 and len(names_list) > 1:
+        from wfh_modules.thread_pool import parallel_generate
+
+        _info(f"Parallel generation: {threads} threads × {len(names_list)} names")
+
+        single_name_params = []
+        for name in names_list:
+            p = dict(params)
+            p["names"] = [name]
+            single_name_params.append(p)
+
+        def _gen_for_params(p: dict):
+            return run_domain_users(p)
+
+        gen = parallel_generate(_gen_for_params, single_name_params, threads=threads)
+    else:
+        gen = run_domain_users(params)
+
+    if ml_model:
+        domain = params.get("domain", "")
+        candidates = list(gen)
+        ranked     = ml_model.rank_and_yield(candidates, domain)
+        count      = _write_output(ranked, args.output)
+    else:
+        count = _write_output(gen, args.output)
+
     _ok(f"Generated: {count:,} entries")
 
 
@@ -554,25 +678,54 @@ def cmd_scrape(args: argparse.Namespace) -> None:
         except FileNotFoundError:
             _warn(f"Stop-words file not found: {stopwords_file}")
 
-    scraper = WebScraper(
-        start_url=args.url,
-        depth=args.depth,
-        min_word_len=args.min_word,
-        max_word_len=args.max_word,
-        extract_emails=args.emails,
-        extract_meta=args.meta,
-        auth=auth,
-        delay=args.delay,
-        user_agent=getattr(args, "user_agent", None),
-        proxy=getattr(args, "proxy", None),
-        extra_headers=extra_headers or None,
-        stopwords=stopwords if stopwords else None,
-    )
-    _info(f"Crawling: {args.url} [depth={args.depth}]")
-    if getattr(args, "proxy", None):
-        _info(f"Proxy: {args.proxy}")
-    count = _write_output(scraper.crawl(), args.output)
-    _ok(f"Extracted: {count:,} words")
+    with_numbers = getattr(args, "with_numbers", False)
+    with_spaces = getattr(args, "with_spaces", False)
+    capture_paths = getattr(args, "capture_paths", False)
+    capture_subdomains = getattr(args, "capture_subdomains", False)
+
+    # Multi-URL mode
+    urls_file = getattr(args, "urls_file", None)
+    urls_to_crawl: list[str] = []
+    if urls_file:
+        try:
+            with open(urls_file, encoding="utf-8") as uf:
+                urls_to_crawl = [u.strip() for u in uf if u.strip() and not u.startswith("#")]
+            _info(f"Loaded {len(urls_to_crawl)} URLs from {urls_file}")
+        except FileNotFoundError:
+            _err(f"URLs file not found: {urls_file}")
+            return
+    else:
+        urls_to_crawl = [args.url]
+
+    total_count = 0
+    for url in urls_to_crawl:
+        if is_shutdown():
+            break
+        scraper = WebScraper(
+            start_url=url,
+            depth=args.depth,
+            min_word_len=args.min_word,
+            max_word_len=args.max_word,
+            extract_emails=args.emails,
+            extract_meta=args.meta,
+            auth=auth,
+            delay=args.delay,
+            user_agent=getattr(args, "user_agent", None),
+            proxy=getattr(args, "proxy", None),
+            extra_headers=extra_headers or None,
+            stopwords=stopwords if stopwords else None,
+            with_numbers=with_numbers,
+            with_spaces=with_spaces,
+            capture_paths=capture_paths,
+            capture_subdomains=capture_subdomains,
+        )
+        _info(f"Crawling: {url} [depth={args.depth}]")
+        if getattr(args, "proxy", None):
+            _info(f"Proxy: {args.proxy}")
+        count = _write_output(scraper.crawl(), args.output, append=(total_count > 0))
+        total_count += count
+
+    _ok(f"Extracted: {total_count:,} words from {len(urls_to_crawl)} URL(s)")
 
 
 def cmd_ocr(args: argparse.Namespace) -> None:
@@ -652,6 +805,7 @@ def cmd_analyze(args: argparse.Namespace) -> None:
         analyze_wordlist, format_report,
         analyze_masks, format_mask_report,
         export_stats_json, export_stats_csv,
+        export_stats_markdown,
         extract_base_words,
     )
 
@@ -689,6 +843,12 @@ def cmd_analyze(args: argparse.Namespace) -> None:
         if args.output:
             Path(args.output).write_text(content, encoding="utf-8")
             _ok(f"CSV report saved to: {args.output}")
+    elif fmt == "markdown":
+        content = export_stats_markdown(metrics, args.wordlist, mask_data)
+        print(content)
+        if args.output:
+            Path(args.output).write_text(content, encoding="utf-8")
+            _ok(f"Markdown report saved to: {args.output}")
     else:
         report = format_report(metrics, args.wordlist)
         print(report)
@@ -863,6 +1023,7 @@ def cmd_sanitize(args: argparse.Namespace) -> None:
             filter_pattern=getattr(args, "filter", None),
             exclude_pattern=getattr(args, "exclude", None),
             inplace=inplace,
+            strip_control=getattr(args, "strip_control", False),
         )
     except FileNotFoundError as exc:
         _err(str(exc))
@@ -893,6 +1054,44 @@ def cmd_reverse(args: argparse.Namespace) -> None:
         _ok(f"Saved to: {output}")
     elif inplace:
         _ok(f"File updated in-place: {args.wordlist}")
+
+
+def cmd_mangle(args: argparse.Namespace) -> None:
+    """Handler for hashcat-style mangling rules on wordlists."""
+    from wfh_modules.mangler import apply_rules, BUILTIN_RULES
+
+    list_rules = getattr(args, "list_rules", False)
+    if list_rules:
+        _info("Available mangling rules:")
+        for name, desc in BUILTIN_RULES.items():
+            print(f"  {name:20s} — {desc}")
+        return
+
+    wordlist_path = getattr(args, "wordlist", None)
+    if not wordlist_path:
+        _err("Provide a wordlist to mangle.")
+        return
+
+    path = Path(wordlist_path)
+    if not path.exists():
+        _err(f"File not found: {wordlist_path}")
+        return
+
+    rules = getattr(args, "rules", "all") or "all"
+    if rules == "all":
+        active_rules = list(BUILTIN_RULES.keys())
+    else:
+        active_rules = [r.strip() for r in rules.split(",") if r.strip()]
+
+    _info(f"Mangling: {wordlist_path} with rules: {', '.join(active_rules)}")
+
+    lines: list[str] = []
+    with path.open(encoding="utf-8", errors="replace") as f:
+        lines = [ln.rstrip("\n\r") for ln in f if ln.strip()]
+
+    gen = apply_rules(lines, active_rules)
+    count = _write_output(gen, args.output)
+    _ok(f"Mangled output: {count:,} entries")
 
 
 # ── Interactive menu ──────────────────────────────────────────────────────────
@@ -1125,10 +1324,58 @@ def build_parser() -> argparse.ArgumentParser:
   python wfh.py sanitize list.lst --min-len 6 --max-len 20 --sort length -o output.lst
   python wfh.py reverse list.lst -o reversed.lst
   python wfh.py reverse list.lst --inplace
+  python wfh.py mangle wordlist.lst --rules capitalize,append_num -o mangled.lst
+  python wfh.py mangle wordlist.lst --list-rules
+  python wfh.py scrape https://site.com --with-numbers --capture-paths
+  python wfh.py scrape --urls-file urls.txt -d 2 -o scraped.lst
+  python wfh.py analyze list.lst --format markdown -o report.md
+  python wfh.py sanitize list.lst --strip-control --sort frequency -o clean.lst
+  python wfh.py --limit 100000 charset 6 8 abc123 -o limited.lst
+  python wfh.py --timeout 60 profile -o timed.lst
 """,
     )
     parser.add_argument("--version", action="version", version=f"wfh.py {VERSION}")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
+
+    # ── Global compute / threading / ML args ──────────────────────────────────
+    parser.add_argument(
+        "--threads", "-T", metavar="N", type=int, default=5,
+        help=(
+            "Number of worker threads for parallel generation (default: 5, range: 1–300). "
+            "Warning at >50, alert at >100, critical at >200."
+        ),
+    )
+    parser.add_argument(
+        "--compute", metavar="MODE", default="auto",
+        choices=["auto", "cpu", "gpu", "cuda", "rocm", "mps", "hybrid"],
+        help=(
+            "Compute backend for ML operations: "
+            "auto (default) | cpu | gpu | cuda | rocm | mps | hybrid. "
+            "'auto' selects the best available GPU, falls back to CPU."
+        ),
+    )
+    parser.add_argument(
+        "--no-ml", dest="no_ml_global", action="store_true", default=False,
+        help=(
+            "Disable ML-based ranking globally for all subcommands. "
+            "When set, all modules run in rule-based mode regardless of "
+            "per-command --no-ml flags."
+        ),
+    )
+    parser.add_argument(
+        "--limit", "-L", metavar="N", type=int, default=0,
+        help=(
+            "Global limit: stop after writing N entries (default: 0 = unlimited). "
+            "Applies to all generation and extraction commands."
+        ),
+    )
+    parser.add_argument(
+        "--timeout", metavar="SECS", type=int, default=0,
+        help=(
+            "Global timeout: stop after SECS seconds of execution (default: 0 = unlimited). "
+            "Applies to all generation commands."
+        ),
+    )
 
     sub = parser.add_subparsers(dest="command", help="Operation mode")
 
@@ -1202,7 +1449,7 @@ def build_parser() -> argparse.ArgumentParser:
             "LinkedIn API (optional):\n"
             "  Set LINKEDIN_RAPIDAPI_KEY env var to enable API-based search.\n"
             "  Without it, Google dorks are used automatically.\n\n"
-            "Username patterns generated (with all separators . _ - ''):\n"
+            "Username patterns generated (default separator: '.'; use --separators to change):\n"
             "  firstname.lastname  f.lastname  flastname  lastname.firstname\n"
             "  firstname  lastname  firstnamel  initials  and 15+ more\n\n"
             "Examples:\n"
@@ -1230,8 +1477,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_cu.add_argument("--no-api", dest="no_api", action="store_true",
                        help="Skip LinkedIn API even if LINKEDIN_RAPIDAPI_KEY is set")
     # Username options
-    p_cu.add_argument("--separators", metavar="SEP1,SEP2",
-                       help="Username separators (default: . _ - ''). Use '' for empty.")
+    p_cu.add_argument("--separators", metavar="SEP",
+                       help=(
+                           "Username separator(s) used between name parts. "
+                           "Default: '.' (dot only). "
+                           "Examples: --separators _ | --separators .,_ | "
+                           "--separators all (uses . _ - and empty) | "
+                           "--separators none (no separator)."
+                       ))
     p_cu.add_argument("--subdomain", metavar="SUB1,SUB2",
                        help="Subdomain(s) for admin patterns (e.g. a1t3ngrt,webmail)")
     p_cu.add_argument("--no-users", dest="no_users", action="store_true",
@@ -1248,6 +1501,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_cu.add_argument("--year-end", dest="year_end", type=int, default=2026,
                        help="Password year range end (default: 2026)")
     p_cu.add_argument("-o", "--output", help="Output file")
+    p_cu.add_argument(
+        "--no-ml", dest="use_ml", action="store_false", default=True,
+        help="Disable ML-based ranking (use original rule-based order)",
+    )
 
     # ── phone ─────────────────────────────────────────────────────────────
     p_ph2 = sub.add_parser("phone", help="Generate phone number wordlists")
@@ -1286,6 +1543,16 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Custom stop-words file (one word per line)")
     p_sc.add_argument("--delay", type=float, default=0.5,
                        help="Delay between requests in seconds (default: 0.5)")
+    p_sc.add_argument("--with-numbers", dest="with_numbers", action="store_true",
+                       help="Include words containing digits (normally excluded)")
+    p_sc.add_argument("--with-spaces", dest="with_spaces", action="store_true",
+                       help="Include multi-word phrases (space-separated tokens)")
+    p_sc.add_argument("--urls-file", dest="urls_file", metavar="FILE",
+                       help="File with one URL per line (multi-URL scraping mode)")
+    p_sc.add_argument("--capture-paths", dest="capture_paths", action="store_true",
+                       help="Extract URL path segments as additional words")
+    p_sc.add_argument("--capture-subdomains", dest="capture_subdomains", action="store_true",
+                       help="Extract subdomain labels as additional words")
     p_sc.add_argument("-o", "--output", help="Output file")
 
     # ── ocr ───────────────────────────────────────────────────────────────
@@ -1331,8 +1598,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Extract base words (strip trailing digits/specials)")
     p_an.add_argument("--base-output", dest="base_output", metavar="FILE",
                        help="Save base words to file")
-    p_an.add_argument("--format", dest="format", choices=["text", "json", "csv"],
-                       default="text", help="Output format (default: text)")
+    p_an.add_argument("--format", dest="format", choices=["text", "json", "csv", "markdown"],
+                       default="text", help="Output format: text, json, csv, markdown (default: text)")
     p_an.add_argument("-o", "--output", help="Save report to file")
 
     # ── merge ─────────────────────────────────────────────────────────────
@@ -1344,7 +1611,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Remove purely numeric entries")
     p_mg.add_argument("--filter", help="Include regex filter (only matches pass)")
     p_mg.add_argument("--no-dedupe", action="store_true", dest="no_dedupe")
-    p_mg.add_argument("--sort", choices=["alpha", "length", "random"])
+    p_mg.add_argument("--sort", choices=["alpha", "length", "random", "frequency"],
+                       help="Sort mode: alpha, length, random, or frequency (most common first)")
     p_mg.add_argument("-o", "--output", help="Output file")
 
     # ── dns ───────────────────────────────────────────────────────────────
@@ -1394,8 +1662,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_sa.add_argument("--max-len", type=int, default=None, dest="max_len",
                        help="Maximum length (removes longer entries)")
     p_sa.add_argument("--sort", dest="sort",
-                       choices=["alpha", "alpha-rev", "length", "length-rev", "random"],
-                       help="Sort mode for output")
+                       choices=["alpha", "alpha-rev", "length", "length-rev", "random", "frequency"],
+                       help="Sort mode: alpha, alpha-rev, length, length-rev, random, frequency")
     p_sa.add_argument("--filter", dest="filter", metavar="REGEX",
                        help="Include regex — keep only matching lines")
     p_sa.add_argument("--exclude", dest="exclude", metavar="REGEX",
@@ -1406,6 +1674,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Keep blank lines")
     p_sa.add_argument("--keep-comments", action="store_true", dest="keep_comments",
                        help="Keep comment lines (#)")
+    p_sa.add_argument("--strip-control", dest="strip_control", action="store_true",
+                       help="Remove control characters (tabs, null bytes, escape sequences) from lines")
     p_sa.add_argument("--inplace", action="store_true",
                        help="Overwrite original file")
     p_sa.add_argument("-o", "--output", help="Output file (default: stdout)")
@@ -1427,10 +1697,407 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Overwrite original file")
     p_rv.add_argument("-o", "--output", help="Output file (default: stdout)")
 
+    # ── mangle ────────────────────────────────────────────────────────────────
+    p_mn = sub.add_parser(
+        "mangle",
+        help="Apply hashcat-style mangling rules to a wordlist",
+        description=(
+            "Apply transformation rules to every word in a wordlist.\n\n"
+            "Rules (inspired by Hashcat/John rule engine):\n"
+            "  capitalize   — Capitalize first letter\n"
+            "  upper        — Uppercase entire word\n"
+            "  lower        — Lowercase entire word\n"
+            "  reverse      — Reverse the word\n"
+            "  toggle       — Toggle case of all chars\n"
+            "  append_num   — Append 0-99, common years\n"
+            "  prepend_num  — Prepend 0-9\n"
+            "  append_special — Append !, @, #, $, %, etc.\n"
+            "  leet_basic   — Basic leet substitutions\n"
+            "  duplicate    — Duplicate the word (e.g. passpass)\n"
+            "  strip_vowels — Remove all vowels\n\n"
+            "Examples:\n"
+            "  wfh.py mangle wordlist.lst -o mangled.lst\n"
+            "  wfh.py mangle wordlist.lst --rules capitalize,leet_basic,append_num\n"
+            "  wfh.py mangle wordlist.lst --list-rules"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_mn.add_argument("wordlist", nargs="?", default=None, help="Wordlist to mangle")
+    p_mn.add_argument("--rules", default="all",
+                       help="Comma-separated rule names or 'all' (default: all)")
+    p_mn.add_argument("--list-rules", dest="list_rules", action="store_true",
+                       help="List available mangling rules and exit")
+    p_mn.add_argument("-o", "--output", help="Output file")
+
+    # ── sysinfo ───────────────────────────────────────────────────────────────
+    sub.add_parser(
+        "sysinfo",
+        help="Show hardware profile, compute backend and thread status",
+        description=(
+            "Display detected CPU, RAM, GPU and compute backend.\n"
+            "Shows current --threads and --compute settings.\n\n"
+            "Examples:\n"
+            "  wfh.py sysinfo\n"
+            "  wfh.py --compute gpu sysinfo\n"
+            "  wfh.py --threads 20 sysinfo"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    # ── corp-prefixes ─────────────────────────────────────────────────────────
+    p_cp = sub.add_parser(
+        "corp-prefixes",
+        help="Generate username variations with corporate department/role prefixes",
+        description=(
+            "Generate username variations with department, role, and functional prefixes.\n\n"
+            "All patterns loaded from data/corp_prefix_patterns.json — no hardcoded data.\n"
+            "No real company names ever stored or generated.\n\n"
+            "Prefix categories:\n"
+            "  department  — ti, helpdesk, adm, rh, fin, seg, dev, redes, ...\n"
+            "  role        — svc, admin, ger, dir, analista, trainee, ...\n"
+            "  contractor  — ext, externo, terceiro, vendor, pj, ...\n"
+            "  temp        — temp, tmp, provisorio, ...\n"
+            "  generic     — user, usr, account, login, ...\n\n"
+            "Examples:\n"
+            "  wfh.py corp-prefixes --names 'João Silva' --domain empresa.com.br\n"
+            "  wfh.py corp-prefixes --names 'João Silva' --prefixes svc,adm --separators .\n"
+            "  wfh.py corp-prefixes --names 'João Silva' --categories department,role\n"
+            "  wfh.py corp-prefixes --names 'João Silva' --sector judicial\n"
+            "  wfh.py corp-prefixes --list-prefixes\n"
+            "  wfh.py corp-prefixes --file employees.txt --domain corp.com.br -o prefixed.lst"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_cp.add_argument("--names", metavar="NAME1,NAME2", help="Comma-separated full names")
+    p_cp.add_argument("--file", metavar="FILE", help="File with employee names")
+    p_cp.add_argument("--domain", default="", help="Company domain for @domain suffix")
+    p_cp.add_argument("--no-at", dest="no_at", action="store_true",
+                       help="Omit @domain suffix from output")
+    p_cp.add_argument(
+        "--prefixes", metavar="pfx1,pfx2",
+        help="Explicit prefix list (e.g. svc,adm,ti). Overrides --categories.",
+    )
+    p_cp.add_argument(
+        "--categories", metavar="cat1,cat2",
+        help="Prefix categories to include: department, role, contractor, temp, generic",
+    )
+    p_cp.add_argument(
+        "--sector", metavar="SECTOR",
+        help=(
+            "Force sector label for prefix selection "
+            "(energia_utilities, judicial, financas, saude, governo, generic, ...)"
+        ),
+    )
+    p_cp.add_argument(
+        "--separators", metavar="SEP",
+        default=".",
+        help="Separator(s) between prefix and name parts (default: '.')",
+    )
+    p_cp.add_argument(
+        "--no-numeric", dest="no_numeric", action="store_true",
+        help="Skip numeric suffix variants",
+    )
+    p_cp.add_argument(
+        "--list-prefixes", dest="list_prefixes", action="store_true",
+        help="List all available prefix groups and exit",
+    )
+    p_cp.add_argument(
+        "--config", metavar="FILE",
+        help="Custom prefix patterns JSON file (default: data/corp_prefix_patterns.json)",
+    )
+    p_cp.add_argument("-o", "--output", help="Output file")
+
+    # ── train ─────────────────────────────────────────────────────────────────
+    p_tr = sub.add_parser(
+        "train",
+        help="Train ML pattern model from AD exports, wordlists, and username lists",
+        description=(
+            "Train the statistical pattern model for corporate credential generation.\n\n"
+            "Privacy: only structural patterns are extracted — no raw usernames,\n"
+            "passwords, company names, or personal data are ever stored.\n\n"
+            "Examples:\n"
+            "  wfh.py train --csv export.csv --auto -o .model/pattern_model.json\n"
+            "  wfh.py train --auto\n"
+            "  wfh.py train --csv users.csv --wordlist wlist_brasil.lst --usernames username_br.lst\n"
+            "  wfh.py train --csv export.csv --uid-col samaccountname --mail-col mail"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_tr.add_argument(
+        "--csv", metavar="FILE", action="append", default=[],
+        help="AD export CSV file(s) to train from (can repeat for multiple files)",
+    )
+    p_tr.add_argument(
+        "--wordlist", metavar="FILE", action="append", default=[],
+        help="Password wordlist file(s) to train from",
+    )
+    p_tr.add_argument(
+        "--usernames", metavar="FILE", action="append", default=[],
+        help="Username list file(s) to train from",
+    )
+    p_tr.add_argument(
+        "--auto", action="store_true",
+        help="Auto-discover and train from known local wordlists (wlist_brasil.lst, username_br.lst, etc.)",
+    )
+    p_tr.add_argument(
+        "--uid-col", dest="uid_col", default="userid",
+        help="CSV column name for username/samaccountname (default: userid)",
+    )
+    p_tr.add_argument(
+        "--eid-col", dest="eid_col", default="employeeid",
+        help="CSV column name for employee ID (default: employeeid)",
+    )
+    p_tr.add_argument(
+        "--mail-col", dest="mail_col", default="workemail",
+        help="CSV column name for work email (default: workemail)",
+    )
+    p_tr.add_argument(
+        "--max-rows", dest="max_rows", type=int, default=0,
+        help="Max CSV rows to process (0 = all)",
+    )
+    p_tr.add_argument(
+        "--max-lines", dest="max_lines", type=int, default=500_000,
+        help="Max lines to read from wordlists (default: 500000)",
+    )
+    p_tr.add_argument(
+        "-o", "--output", metavar="FILE",
+        help="Output model file (default: .model/pattern_model.json)",
+    )
+
     return parser
 
 
 # ── Entrypoint ────────────────────────────────────────────────────────────────
+
+def cmd_sysinfo(args: argparse.Namespace) -> None:
+    """Show hardware profile and compute backend status."""
+    from wfh_modules.hw_profiler import get_hw_profile
+    from wfh_modules.compute_backend import auto_select_backend
+    from wfh_modules.thread_pool import (
+        DEFAULT_THREADS, MIN_THREADS, MAX_THREADS,
+        WARN_THRESHOLD, ALERT_THRESHOLD,
+    )
+
+    compute_mode = _GLOBAL_CTX.get("compute_mode", "auto")
+
+    _info("Detecting hardware profile...")
+    hw = get_hw_profile(force=True)
+
+    print()
+    print(f"  CPU   : {hw.cpu_model}")
+    print(f"  Cores : {hw.cpu_cores} physical / {hw.cpu_threads} logical")
+    print(f"  RAM   : {hw.ram_total_mb:,} MB total / {hw.ram_avail_mb:,} MB available")
+
+    if hw.has_gpu():
+        for gpu in hw.gpus:
+            print(f"  GPU   : {gpu.one_liner()}")
+    else:
+        print("  GPU   : None detected (CPU-only mode)")
+
+    print()
+    backend = auto_select_backend(compute_mode, hw)
+    print(f"  Compute backend : {backend.name.upper()}")
+    print(f"  Device info     : {backend.device_info}")
+    print(f"  ML enabled      : {_GLOBAL_CTX.get('use_ml', True)}")
+
+    cur_threads = _GLOBAL_CTX.get("threads", DEFAULT_THREADS)
+    rec_threads = hw.recommended_threads()
+    print()
+    print(f"  Threads (active) : {cur_threads}  [range: {MIN_THREADS}–{MAX_THREADS}, recommended: {rec_threads}]")
+    if cur_threads >= ALERT_THRESHOLD:
+        print(f"  {Fore.RED}[ALERT]{Style.RESET_ALL} Thread count {cur_threads} is very high — monitor system resources.")
+    elif cur_threads >= WARN_THRESHOLD:
+        print(f"  {Fore.YELLOW}[WARN]{Style.RESET_ALL} Thread count {cur_threads} exceeds recommended limit.")
+    print()
+
+
+def cmd_corp_prefixes(args: argparse.Namespace) -> None:
+    """Handler for corporate username prefix generation."""
+    from wfh_modules.corp_prefixes import (
+        load_prefix_config,
+        generate_from_name,
+        get_all_prefixes,
+        list_all_prefixes,
+    )
+
+    try:
+        config = load_prefix_config(getattr(args, "config", None))
+    except FileNotFoundError as exc:
+        _err(str(exc))
+        return
+
+    # ── List available prefixes ──────────────────────────────────────────────
+    if getattr(args, "list_prefixes", False):
+        all_groups = list_all_prefixes(config)
+        for group, aliases in all_groups.items():
+            print(f"  {group}: {', '.join(aliases)}")
+        return
+
+    # ── Collect names ────────────────────────────────────────────────────────
+    names: list[str] = []
+    if getattr(args, "names", None):
+        raw = args.names if isinstance(args.names, str) else ",".join(args.names)
+        names = [n.strip() for n in raw.split(",") if n.strip()]
+
+    if getattr(args, "file", None):
+        from wfh_modules.domain_users import collect_names_from_file
+        try:
+            names += collect_names_from_file(args.file)
+        except FileNotFoundError as exc:
+            _err(str(exc))
+            return
+
+    if not names:
+        _warn("No names provided. Use --names or --file.")
+        return
+
+    # ── Resolve options ──────────────────────────────────────────────────────
+    domain     = getattr(args, "domain", "") or ""
+    sector     = getattr(args, "sector", None)
+    categories = None
+    if getattr(args, "categories", None):
+        categories = [c.strip() for c in args.categories.split(",")]
+
+    # Explicit prefix list
+    prefixes = None
+    if getattr(args, "prefixes", None):
+        prefixes = [p.strip() for p in args.prefixes.split(",")]
+
+    sep_raw = getattr(args, "separators", None)
+    if sep_raw:
+        separators = [s if s.lower() not in ("none", "empty") else "" for s in sep_raw.split(",")]
+    else:
+        separators = ["."]  # default
+
+    with_numeric = not getattr(args, "no_numeric", False)
+
+    # ── Generate ────────────────────────────────────────────────────────────
+    def _generate():
+        for name in names:
+            results = generate_from_name(
+                full_name=name,
+                domain=domain,
+                prefixes=prefixes,
+                categories=categories,
+                separators=separators,
+                sector=sector,
+                with_numeric=with_numeric,
+                config=config,
+            )
+            if domain and not getattr(args, "no_at", False):
+                for r in results:
+                    yield f"{r}@{domain}"
+            else:
+                yield from results
+
+    count = _write_output(_generate(), args.output)
+    _ok(f"Generated: {count:,} prefixed username entries")
+
+
+def cmd_train(args: argparse.Namespace) -> None:
+    """
+    Train the ML pattern model from available data sources.
+
+    Privacy: only structural patterns are extracted — no raw usernames,
+    passwords, company names, or personal data are ever stored in the model.
+    """
+    from wfh_modules.ml_patterns import PatternModel, DEFAULT_MODEL_FILE
+
+    model = PatternModel()
+    trained_any = False
+
+    # ── CSV sources ────────────────────────────────────────────────────────────
+    for csv_path in (getattr(args, "csv", None) or []):
+        p = _resolve_path(csv_path)
+        if not p or not p.exists():
+            _warn(f"CSV not found: {csv_path}")
+            continue
+        _info(f"Training from CSV: {p.name}")
+        stats = model.train_from_csv(
+            str(p),
+            userid_col     = getattr(args, "uid_col",  "userid"),
+            employeeid_col = getattr(args, "eid_col",  "employeeid"),
+            workemail_col  = getattr(args, "mail_col", "workemail"),
+            max_rows       = getattr(args, "max_rows", 0),
+        )
+        _info(f"  → {stats['uid_samples']:,} uid samples from {stats['processed_rows']:,} rows")
+        trained_any = True
+
+    # ── Password wordlists ────────────────────────────────────────────────────
+    for wl_path in (getattr(args, "wordlist", None) or []):
+        p = _resolve_path(wl_path)
+        if not p or not p.exists():
+            _warn(f"Wordlist not found: {wl_path}")
+            continue
+        _info(f"Training from password wordlist: {p.name}")
+        stats = model.train_from_wordlist(
+            str(p), mode="password",
+            max_lines=getattr(args, "max_lines", 500_000),
+            source_label=p.name,
+        )
+        _info(f"  → {stats['processed']:,} samples")
+        trained_any = True
+
+    # ── Username lists ────────────────────────────────────────────────────────
+    for ul_path in (getattr(args, "usernames", None) or []):
+        p = _resolve_path(ul_path)
+        if not p or not p.exists():
+            _warn(f"Username list not found: {ul_path}")
+            continue
+        _info(f"Training from username list: {p.name}")
+        stats = model.train_from_wordlist(
+            str(p), mode="username",
+            max_lines=getattr(args, "max_lines", 200_000),
+            source_label=p.name,
+        )
+        _info(f"  → {stats['processed']:,} samples")
+        trained_any = True
+
+    # ── Auto-discover local wordlists if --auto flag is set ───────────────────
+    if getattr(args, "auto", False):
+        wfh_root = _resolve_path(".")
+        auto_sources = [
+            ("passwords/wlist_brasil.lst",       "password", 300_000),
+            ("passwords/default-creds-combo.lst", "password", 50_000),
+            ("usernames/username_br.lst",          "username", 10_000),
+        ]
+        for rel, mode, limit in auto_sources:
+            p = wfh_root / rel if wfh_root else None
+            if p and p.exists():
+                _info(f"Auto-training from {p.name} (mode={mode})")
+                stats = model.train_from_wordlist(
+                    str(p), mode=mode,
+                    max_lines=limit,
+                    source_label=p.name,
+                )
+                _info(f"  → {stats['processed']:,} samples")
+                trained_any = True
+
+    if not trained_any:
+        _warn("No training data provided. Use --csv, --wordlist, --usernames, or --auto.")
+        return
+
+    # ── Save model ─────────────────────────────────────────────────────────────
+    out_path = getattr(args, "output", None) or str(DEFAULT_MODEL_FILE)
+    saved = model.save(out_path)
+    print()
+    _info(f"Model saved: {saved}")
+    print(model.describe())
+
+
+def _resolve_path(p: str):
+    """Resolve a path relative to wfh.py location or cwd."""
+    from pathlib import Path
+    pp = Path(p)
+    if pp.exists():
+        return pp
+    # Try relative to wfh.py location
+    wfh_dir = Path(__file__).parent
+    alt = wfh_dir / p
+    if alt.exists():
+        return alt
+    return pp  # return as-is (may not exist)
+
 
 def main() -> None:
     """Main entry point for wfh.py."""
@@ -1441,6 +2108,34 @@ def main() -> None:
 
     if args.verbose if hasattr(args, "verbose") else False:
         logging.getLogger().setLevel(logging.DEBUG)
+
+    # ── Apply global execution context ────────────────────────────────────────
+    from wfh_modules.thread_pool import validate_thread_count, DEFAULT_THREADS
+    from wfh_modules.compute_backend import set_backend
+
+    raw_threads    = getattr(args, "threads", DEFAULT_THREADS) or DEFAULT_THREADS
+    compute_mode   = getattr(args, "compute", "auto") or "auto"
+    global_use_ml  = not getattr(args, "no_ml_global", False)
+    global_limit   = getattr(args, "limit", 0) or 0
+    global_timeout = getattr(args, "timeout", 0) or 0
+
+    # Validate and store thread count
+    threads = validate_thread_count(raw_threads, clamp=True)
+    _GLOBAL_CTX["threads"]      = threads
+    _GLOBAL_CTX["compute_mode"] = compute_mode
+    _GLOBAL_CTX["use_ml"]       = global_use_ml
+    _GLOBAL_CTX["limit"]        = global_limit
+    _GLOBAL_CTX["timeout"]      = global_timeout
+    _GLOBAL_CTX["start_time"]   = time.time()
+
+    # Initialize compute backend (lazy — only if any module uses it)
+    if compute_mode != "auto" or threads > 1:
+        try:
+            backend = set_backend(compute_mode)
+            if compute_mode != "auto":
+                _info(f"Compute: {backend.name.upper()} | {backend.device_info}")
+        except Exception:
+            pass
 
     # No subcommand → interactive menu
     if not args.command:
@@ -1472,6 +2167,10 @@ def main() -> None:
         "pharma":   cmd_pharma,
         "sanitize": cmd_sanitize,
         "reverse":  cmd_reverse,
+        "train":         cmd_train,
+        "corp-prefixes": cmd_corp_prefixes,
+        "sysinfo":       cmd_sysinfo,
+        "mangle":        cmd_mangle,
     }
 
     handler = handlers.get(args.command)

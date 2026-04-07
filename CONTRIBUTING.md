@@ -1,53 +1,90 @@
 # Contributing
 
-Thank you for your interest in improving this project. This document explains how
-to contribute effectively while preserving attribution and legal clarity.
+Thank you for your interest in improving **WordListsForHacking**. This guide
+explains how to contribute effectively while preserving attribution and quality.
 
-## Ground rules
+## Ground Rules
 
-- Use this project only for **authorized** security research, education, and
+- Use this project **only** for authorized security research, education, and
   contracted penetration testing.
-- Do not submit content intended to facilitate unauthorized access to systems.
+- Do not submit content intended to facilitate unauthorized access.
 - Follow the [Code of Conduct](CODE_OF_CONDUCT.md) in all interactions.
+- Never include real PII, real credentials, or identifiable company data in
+  wordlists, patterns, or code.
 
-## How to contribute
+## How to Contribute
 
-1. **Open an issue first** for substantial changes (new features, large refactors).
-2. **Fork** the repository and create a **feature branch** from the default
-   branch (`main` or `master` as documented in the README).
-3. **Keep commits focused** — one logical change per commit when possible.
-4. **Test** your changes locally before opening a pull request.
-5. **Open a pull request** with a clear description, rationale, and references to
-   related issues.
+1. **Open an issue first** for substantial changes (new features, large
+   refactors, new modules).
+2. **Fork** the repository and create a **feature branch** from `main`.
+3. **Keep commits focused** — one logical change per commit.
+4. **Test locally** before opening a pull request.
+5. **Open a pull request** with a clear description.
 
-## Pull request checklist
+## Code Style
 
-- [ ] Code or documentation changes are scoped and documented.
-- [ ] No secrets, API keys, or real customer data are included.
-- [ ] License headers and third-party notices are preserved where required.
-- [ ] You agree that your contributions are licensed under the same terms as
-      this repository (see `LICENSE`), unless explicitly stated otherwise.
+- **Type hints** on all function signatures.
+- **Docstrings** in Google style for every class and public function.
+- **Logging** via `logging` module — never `print()` in library code.
+- **No hardcoded sensitive data** — use `.env` and configuration files.
+- **No unnecessary imports** — keep modules lean.
+- Follow existing module structure in `wfh_modules/`.
 
-## Attribution and credits
+## Adding a New Module
 
-- **Original author** (Andre Henrique / @mrhenrike) retains credit as shown in
-  `README.md`, commit history, and release notes.
-- When you contribute, you may be credited in release notes or the README at
-  maintainer discretion.
-- Do not remove copyright or license notices from upstream or third-party files.
+1. Create `wfh_modules/your_module.py` following the existing pattern.
+2. Add the CLI subcommand in `wfh.py` → `build_parser()`.
+3. Add the handler function `cmd_your_module()` in `wfh.py`.
+4. Add the interactive menu entry if appropriate.
+5. Update `requirements.txt` if new dependencies are needed.
+6. Update the README with documentation and examples.
 
-## Style and documentation
+## Wordlist Contributions
 
-- Default documentation language for issues and primary README: **English (en-US)**.
-- Portuguese (pt-BR) companion docs may exist where noted (e.g. `README.pt-BR.md`).
-- Use clear, technical language; prefer examples over vague descriptions.
+- **No real PII** — no real names tied to real companies.
+- **No real credentials** — no actual passwords from breaches.
+- **Structural patterns only** — abstract shapes, not raw data.
+- Deduplicate entries before submitting.
+- Follow existing file naming conventions (`*.lst`).
 
-## Security disclosures
+## Pull Request Template
 
-If you discover a security vulnerability in this project, **do not** open a
-public issue. Contact the maintainer through the channel indicated in the
-repository README.
+When opening a PR, include:
 
-## Questions
+```
+## What changed
+<Brief description>
 
-Open an **Issue** on GitHub for process questions.
+## Why
+<Motivation / issue reference>
+
+## How to test
+<Steps to verify the change>
+
+## Checklist
+- [ ] Type hints on all new functions
+- [ ] Docstrings on all public functions
+- [ ] No hardcoded sensitive data
+- [ ] Tested locally
+- [ ] README updated (if applicable)
+```
+
+## Versioning
+
+This project follows [Semantic Versioning](https://semver.org/):
+`MAJOR.MINOR.PATCH` (e.g., `1.7.0`).
+
+- **MAJOR**: Breaking changes to CLI interface or module API.
+- **MINOR**: New features, new modules, new patterns.
+- **PATCH**: Bug fixes, documentation updates, minor improvements.
+
+## Attribution
+
+All contributions are attributed to **André Henrique**
+([@mrhenrike](https://github.com/mrhenrike)) as the project maintainer.
+Contributors are acknowledged in release notes and the GitHub contributors list.
+
+## License
+
+By contributing, you agree that your contributions will be licensed under the
+[MIT License](LICENSE).

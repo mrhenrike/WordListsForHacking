@@ -20,6 +20,7 @@ Versão: 1.0.0
 import logging
 import random
 import re
+from collections import Counter
 from pathlib import Path
 from typing import Generator, Optional
 
@@ -97,6 +98,9 @@ def stream_merged(
         entries.sort(key=len)
     elif sort_mode == "random":
         random.shuffle(entries)
+    elif sort_mode == "frequency":
+        freq = Counter(entries)
+        entries.sort(key=lambda x: freq[x], reverse=True)
 
     yield from entries
 

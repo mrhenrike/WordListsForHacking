@@ -1,11 +1,103 @@
-# WordListsForHacking
+# WordListsForHacking (WFH)
 
-> **Author:** André Henrique ([@mrhenrike](https://github.com/mrhenrike))  
-> **Version:** 2.1.0 · **License:** MIT · **Updated:** 2026-03-30
+<p align="center">
+  <img src="https://img.shields.io/github/stars/mrhenrike/WordListsForHacking?style=flat-square" alt="GitHub Stars">
+  <img src="https://img.shields.io/github/license/mrhenrike/WordListsForHacking?style=flat-square" alt="License">
+  <img src="https://img.shields.io/badge/version-2.0.0-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/python-3.10%2B-blue?style=flat-square&logo=python&logoColor=white" alt="Python 3.10+">
+</p>
 
-Curated wordlists for authorized penetration testing, red team exercises, SOC training,
-and security workshops — focused on Brazilian environments and global device defaults.
-Includes **wfh.py** — a unified wordlist generation tool (CUPP + Crunch + CeWL + alterx + pipal).
+**Unified wordlist generation toolkit for pentest and red team operations.** Combines charset generation, target profiling, web scraping, OCR extraction, leet speak permutation, DNS fuzzing, phone number generation, corporate domain user enumeration, ML-based ranking, and statistical analysis — all in a single CLI tool.
+
+This is **not** a fork of CUPP, Crunch, CeWL, or any other tool. It is an original project inspired by the best ideas in the offensive security ecosystem.
+
+---
+
+> **DISCLAIMER:** This tool is intended **exclusively for authorized security testing, penetration testing, and educational purposes**. Unauthorized use against systems you do not own or have explicit written permission to test is **illegal** and unethical. The author assumes no liability for misuse. Always obtain proper authorization before conducting any security assessment.
+
+---
+
+## Table of Contents
+
+- [Quick Start](#quick-start)
+- [Repository Structure](#repository-structure)
+- [Wordlists](#wordlists)
+- [wfh.py — CLI Tool](#wfhpy--cli-tool)
+  - [Global Flags](#global-flags)
+  - [Subcommands](#subcommands)
+- [Usage Examples](#usage-examples)
+  - [Charset Generation](#charset-generation)
+  - [Pattern Generation](#pattern-generation)
+  - [Personal Target Profiling](#personal-target-profiling)
+  - [Corporate Target Profiling](#corporate-target-profiling)
+  - [Corporate Domain Users](#corporate-domain-users)
+  - [Phone Number Generation](#phone-number-generation)
+  - [Web Scraping](#web-scraping)
+  - [OCR Extraction](#ocr-extraction)
+  - [File Extraction](#file-extraction)
+  - [Leet Speak Variants](#leet-speak-variants)
+  - [XOR Crypto](#xor-crypto)
+  - [Wordlist Analysis](#wordlist-analysis)
+  - [Merge Wordlists](#merge-wordlists)
+  - [DNS Fuzzing](#dns-fuzzing)
+  - [Healthcare / Pharmacy Patterns](#healthcare--pharmacy-patterns)
+  - [Sanitize Wordlist](#sanitize-wordlist)
+  - [Reverse Lines](#reverse-lines)
+  - [Corporate Prefixes](#corporate-prefixes)
+  - [ML Model Training](#ml-model-training)
+  - [System Info](#system-info)
+  - [Multi-threading](#multi-threading)
+  - [CPU / GPU Compute](#cpu--gpu-compute)
+  - [ML-based Ranking](#ml-based-ranking)
+- [ML Model](#ml-model)
+- [Contributing](#contributing)
+- [License](#license)
+- [Disclaimer](#disclaimer)
+- [Credits & Inspiration](#credits--inspiration)
+- [Brazilian Wordlist (wlist_brasil.lst)](#brazilian-wordlist-wlist_brasillst)
+- [Is My Password in This List?](#is-my-password-in-this-list)
+
+---
+
+## Quick Start
+
+### Clone
+
+```bash
+git clone https://github.com/mrhenrike/WordListsForHacking.git
+cd WordListsForHacking
+```
+
+### Virtual Environment (recommended)
+
+**Linux / macOS:**
+
+```bash
+chmod +x setup_venv.sh
+./setup_venv.sh
+source .venv/bin/activate
+```
+
+**Windows (PowerShell):**
+
+```powershell
+.\setup_venv.ps1
+.\.venv\Scripts\Activate.ps1
+```
+
+### Install Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### Run
+
+```bash
+python wfh.py              # interactive menu
+python wfh.py --help       # full CLI help
+python wfh.py charset -h   # help for a specific subcommand
+```
 
 ---
 
@@ -13,329 +105,864 @@ Includes **wfh.py** — a unified wordlist generation tool (CUPP + Crunch + CeWL
 
 ```
 WordListsForHacking/
-├── labs/                    # Wordlists for workshops, classes and events (manually curated)
-│   ├── labs_passwords.lst   # Passwords used in Prof. André's security events
-│   ├── labs_users.lst       # Usernames used in classes and events
-│   └── labs_mikrotik_pass.lst  # MikroTik-specific passwords for tool demos
-│
-├── usernames/               # Username lists — consolidated by the team
-│   └── username_br.lst      # Brazilian and global usernames (~1.1K entries)
-│
-├── passwords/               # Password/wordlists — team consolidated + generated
-│   ├── wlist_brasil.lst     # Brazilian passwords (~1.58M unique entries)
-│   └── default-creds-combo.lst  # Default credentials combos (user:password)
-│
-├── generated/               # Output folder for wfh.py generated lists (gitignored)
-│
-├── wfh.py                   # Unified wordlist generation CLI (v1.1.0)
-├── wfh_modules/             # wfh.py modules (leet, charset, pattern, ocr, scrape...)
-├── data/                    # Static data for generation (pharma_br.py, etc.)
-├── vendor/                  # Reference tools cloned for study (cupp, crunch, cewl...)
+├── labs/                          # Workshop & training wordlists
+│   ├── labs_passwords.lst         # Passwords for security events
+│   ├── labs_users.lst             # Usernames for classes/events
+│   └── labs_mikrotik_pass.lst     # MikroTik-specific passwords
+├── usernames/
+│   └── username_br.lst            # Brazilian + global usernames (~1.1K)
+├── passwords/
+│   ├── wlist_brasil.lst           # Brazilian passwords (~3.88M unique)
+│   └── default-creds-combo.lst    # Default credential combos
+├── data/
+│   ├── behavior_patterns.json     # Behavioral patterns (religious, cultural, industry)
+│   └── corp_prefix_patterns.json  # Corporate prefix patterns (MSP/MSSP/SOC/DevOps/etc)
+├── wfh.py                         # Main CLI tool (v2.0.0)
+├── wfh_modules/                   # Python modules (22 modules)
+│   ├── analyzer.py                # Statistical wordlist analysis
+│   ├── charset_gen.py             # Charset generation (crunch-style + hashcat masks)
+│   ├── compute_backend.py         # CPU/GPU compute abstraction
+│   ├── corp_prefixes.py           # Corporate prefix username generation
+│   ├── corp_profiler.py           # Corporate target profiling
+│   ├── dns_wordlist.py            # DNS/subdomain fuzzing
+│   ├── domain_users.py            # Corporate domain user/password generation
+│   ├── file_extractor.py          # File extraction (PDF/XLSX/DOCX)
+│   ├── hw_profiler.py             # Hardware profiler (CPU/RAM/GPU)
+│   ├── leet_permuter.py           # Leet speak permutations
+│   ├── linkedin_search.py         # LinkedIn API integration
+│   ├── merger.py                  # Wordlist merge & deduplication
+│   ├── ml_patterns.py             # ML pattern learning model
+│   ├── ocr_extractor.py           # OCR text extraction
+│   ├── pattern_engine.py          # Template-based pattern generation
+│   ├── phone_gen.py               # Phone number wordlist generation
+│   ├── profiler.py                # Personal target profiling (CUPP-style)
+│   ├── mangler.py                 # Hashcat-style wordlist mangling
+│   ├── sanitizer.py               # Wordlist cleaning/sanitization
+│   ├── thread_pool.py             # Multi-threading support
+│   ├── web_scraper.py             # Web scraping (CeWL-style)
+│   └── xor_crypto.py              # XOR crypto utilities
+├── .model/                        # ML trained model (gitignored)
 ├── requirements.txt
 ├── setup_venv.sh / setup_venv.ps1
-└── update_wordlists.py      # Automated wordlist consolidation script
+└── update_wordlists.py
 ```
 
 ---
 
 ## Wordlists
 
-### `labs/` — Workshop & Training Lists
+### Passwords
 
-| File | Type | Entries | Purpose |
-|------|------|---------|---------|
-| `labs/labs_passwords.lst` | Passwords | ~116 | Passwords used in Prof. André's classes and security events |
-| `labs/labs_users.lst` | Usernames | ~10 | Usernames used in classes and events |
-| `labs/labs_mikrotik_pass.lst` | Passwords | ~38 | MikroTik-specific passwords for tool demonstrations |
+| File | Description | Entries |
+|------|-------------|---------|
+| `passwords/wlist_brasil.lst` | Brazilian password corpus — generated by WFH from pattern study of Brazilian leaks/breaches via IntelX, HudsonRock, and massive public OSINT (surface web). Includes corporate, healthcare, retail, personal, and cultural patterns. Sanitized, deduplicated, min 5 chars. | ~3.88M |
+| `passwords/default-creds-combo.lst` | Default credential user:password combos | — |
 
-> **Note:** Lab lists are maintained manually by the instructor. Do not modify via scripts.
+### Usernames
 
-### `usernames/` — Consolidated Username Lists
+| File | Description | Entries |
+|------|-------------|---------|
+| `usernames/username_br.lst` | Brazilian + global username patterns | ~1.1K |
 
-| File | Type | Entries | Purpose |
-|------|------|---------|---------|
-| `usernames/username_br.lst` | Usernames | ~1,168 | Brazilian and global usernames: corporate roles, default accounts, MSP/MSSP patterns |
+### Labs (Training & Workshops)
 
-### `passwords/` — Consolidated Password Lists
+| File | Description |
+|------|-------------|
+| `labs/labs_passwords.lst` | Passwords curated for security workshops |
+| `labs/labs_users.lst` | Usernames curated for training events |
+| `labs/labs_mikrotik_pass.lst` | MikroTik router default/common passwords |
 
-| File | Type | Entries | Purpose |
-|------|------|---------|---------|
-| `passwords/wlist_brasil.lst` | Passwords | ~1.58M | Brazilian passwords: PT-BR dictionary + real leaks + cultural phrases + leet variations |
-| `passwords/default-creds-combo.lst` | `user:password` | ~2,440 | Default credentials for 200+ device/software vendors — no length filtering |
+### Data
 
-### `generated/` — wfh.py Output
-
-Lists generated by **wfh.py** are saved here by default. This folder is gitignored — add specific lists to version control only when curated and validated.
-
----
-
-## Why Pure Numeric Sequences Are NOT Included
-
-Purely numeric sequences (PINs, dates, CPF/CNPJ numbers, phone numbers, ID numbers)
-are intentionally **omitted** from `passwords/wlist_brasil.lst` and `usernames/username_br.lst`.
-
-**Reason:** Tools like `crunch`, `cupp`, and `hashcat --increment` generate these
-sets **locally in seconds** with far greater efficiency than maintaining millions of
-static numeric lines in a file. Including them would inflate file size without
-adding real attack value.
-
-### How to Generate Numeric Wordlists with Crunch
-
-Install Crunch:
-
-```bash
-# Debian / Ubuntu / Kali
-sudo apt install crunch
-
-# Arch Linux / BlackArch
-sudo pacman -S crunch
-
-# Fedora / RHEL
-sudo dnf install crunch
-```
-
-#### All 6- and 8-digit combinations
-
-```bash
-# 6 digits: 000000 to 999999 (1,000,000 entries)
-crunch 6 6 0123456789 -o numeric-6.lst
-
-# 8 digits: 00000000 to 99999999 (100,000,000 entries)
-crunch 8 8 0123456789 -o numeric-8.lst
-
-# 6 to 8 digits in one file
-crunch 6 8 0123456789 -o numeric-6to8.lst
-```
-
-#### Dates — Brazilian formats
-
-```bash
-# DDMMYYYY (e.g., 15081990) — years 2000 to 2025
-for y in $(seq 2000 2025); do
-  crunch 8 8 -t "%%$$${y}" >> datas-ddmmyyyy.lst 2>/dev/null
-done
-
-# YYYYMMDD
-for y in $(seq 2000 2025); do
-  crunch 8 8 -t "${y}$$%%" >> datas-yyyymmdd.lst 2>/dev/null
-done
-
-# DDMMYY (6 digits)
-crunch 6 6 0123456789 -t "%%$$%%" -o datas-ddmmyy.lst
-
-# YYMMDD
-crunch 6 6 0123456789 -t "%%$$%%" -o datas-yymmdd.lst
-```
-
-#### CPF (Brazilian tax ID — 11 digits, no punctuation)
-
-```bash
-# All combinations — note: ~100 GB uncompressed; use prefix filters
-crunch 11 11 0123456789 -o cpf-all.lst
-
-# Filter by São Paulo prefix (011–019):
-crunch 11 11 0123456789 -t "01%%%%%%%%%%" -o cpf-sp.lst
-```
-
-#### CNPJ (Brazilian company ID — 14 digits)
-
-```bash
-# All combinations
-crunch 14 14 0123456789 -o cnpj-all.lst
-
-# Root (8 digits) + fixed branch "0001" + check digits
-crunch 8 8 0123456789 -t "%%%%%%%%" | awk '{print $0"00010001"}' > cnpj-filtered.lst
-```
-
-#### Phone numbers
-
-```bash
-# Mobile without DDD (9 digits, starts with 9)
-crunch 9 9 0123456789 -t "9%%%%%%%%" -o celular-sem-ddd.lst
-
-# Mobile with São Paulo DDD 11
-crunch 11 11 0123456789 -t "119%%%%%%%%" -o celular-sp.lst
-
-# Landline without DDD (8 digits)
-crunch 8 8 0123456789 -o fixo-sem-ddd.lst
-
-# Landline with DDD 11
-crunch 10 10 0123456789 -t "11%%%%%%%%" -o fixo-sp.lst
-
-# All valid DDDs (mobile)
-for ddd in 11 12 13 14 15 16 17 18 19 21 22 24 27 28 31 32 33 34 35 37 38 \
-           41 42 43 44 45 46 47 48 49 51 53 54 55 61 62 63 64 65 66 67 68 69 \
-           71 73 74 75 77 79 81 82 83 84 85 86 87 88 89 91 92 93 94 95 96 97 98 99; do
-  crunch 11 11 0123456789 -t "${ddd}9%%%%%%%%" >> celulares-todos-ddd.lst 2>/dev/null
-done
-```
-
-#### Tips for Hashcat and Hydra
-
-```bash
-# Hashcat — brute-force numeric without a wordlist file
-hashcat -a 3 hash.txt ?d?d?d?d?d?d          # 6 digits
-hashcat -a 3 hash.txt ?d?d?d?d?d?d?d?d      # 8 digits
-hashcat -a 3 hash.txt -i --increment-min=6  # 6 to max
-
-# Pipe Crunch directly into Hydra
-crunch 8 8 0123456789 | hydra -l admin -P - 192.168.1.1 http-get /login
-```
+| File | Description |
+|------|-------------|
+| `data/behavior_patterns.json` | Behavioral patterns — religious, cultural, industry keywords, 14-language word banks, keyboard layouts, leet maps, charsets, phone formats, default credentials |
+| `data/corp_prefix_patterns.json` | Corporate prefix patterns — MSP, MSSP, SOC, DevOps, red/blue/purple team |
 
 ---
 
-## Other Recommended Wordlists
+## wfh.py — CLI Tool
+
+`wfh.py` is a modular CLI tool with **20 subcommands** covering the entire wordlist generation lifecycle: creation, transformation, analysis, and maintenance.
+
+### Global Flags
+
+These flags apply to **all** subcommands:
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--threads N` | Thread count (1–300). Warnings at >50, >100, >200 | `5` |
+| `--compute MODE` | Compute backend: `auto`, `cpu`, `gpu`, `cuda`, `rocm`, `mps`, `hybrid` | `auto` |
+| `--no-ml` | Disable ML pattern ranking globally | off |
+| `-v` / `--verbose` | Enable verbose logging | off |
+
+### Subcommands
+
+#### 1. `charset` — Charset Generation
+
+Generate wordlists by character set and length range. Supports crunch-style charsets, hashcat masks (`?u?l?d?s?a`), and constrained composition.
 
 ```bash
-# RockYou (14M passwords — classic)
-/usr/share/wordlists/rockyou.txt  # pre-installed on Kali
+python wfh.py charset <min_len> <max_len> [charset] [options]
+```
 
-# SecLists (Daniel Miessler — comprehensive collection)
-sudo apt install seclists
-git clone --depth 1 https://github.com/danielmiessler/SecLists.git
+| Flag | Description |
+|------|-------------|
+| `<min_len> <max_len>` | Length range |
+| `[charset]` | Character set name or string (default: `lalpha`) |
+| `-p, --pattern` | Crunch-style pattern (`@` = lowercase, `,` = uppercase, `%` = digit, `^` = symbol) |
+| `--mask` | Hashcat mask (`?u`, `?l`, `?d`, `?s`, `?a`) |
+| `--digits N` | Exact number of digits (constrained) |
+| `--lower N` | Exact number of lowercase chars (constrained) |
+| `--upper N` | Exact number of uppercase chars (constrained) |
+| `--special N` | Exact number of special chars (constrained) |
+| `--create-charset FILE` | Interactive charset config creator |
+| `-o, --output FILE` | Output file |
 
-# CrackStation (1.49 billion real leaked passwords)
-# https://crackstation.net/crackstation-wordlist-password-cracking-dictionary.htm
+#### 2. `pattern` — Template-based Generation
 
-# BRDumps (Brazil-specific wordlists)
-git clone https://github.com/BRDumps/wordlists.git
+Generate wordlists from templates with variable expansion.
 
-# Brazilian Portuguese system dictionary (Kali/Debian)
-sudo apt install wbrazilian
-# Location: /usr/share/dict/brazilian
+```bash
+python wfh.py pattern -t "TEMPLATE" --vars key=value [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-t, --template` | Template string with `{var}` placeholders |
+| `--template-file FILE` | YAML/text template file |
+| `--vars key=val` | Variable definitions (repeatable). Supports ranges (`cod=100-200`), lists, files |
+| `-o, --output FILE` | Output file |
+
+#### 3. `profile` — Personal Target Profiling
+
+Interactive CUPP-style profiling to generate targeted wordlists based on personal information.
+
+```bash
+python wfh.py profile [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--profile-file FILE` | Load profile from YAML file |
+| `--name "Full Name"` | Non-interactive: target full name |
+| `--nick NICK` | Non-interactive: target nickname |
+| `--birth DD/MM/YYYY` | Non-interactive: birth date |
+| `--leet MODE` | Leet mode: `basic`, `medium`, `aggressive` |
+| `--year-start YYYY` | Start year for suffix range |
+| `--year-end YYYY` | End year for suffix range |
+| `--suffix-range START-END` | Numeric suffix range (e.g., `00-99`) |
+| `-o, --output FILE` | Output file |
+
+#### 4. `corp` — Corporate Target Profiling
+
+Interactive corporate profiling — company name, domains, industry, products, locations, technologies.
+
+```bash
+python wfh.py corp [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--leet MODE` | Leet mode: `basic`, `medium`, `aggressive` |
+| `-o, --output FILE` | Output file |
+
+#### 5. `corp-users` — Corporate Domain User/Password Generation
+
+Generate usernames, passwords, and user:password combos for corporate domain targets. Supports 50+ username patterns, 118 password patterns, leet-speak variants, and ML ranking.
+
+```bash
+python wfh.py corp-users [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--domain DOMAIN` | Target domain (e.g., `acme.com.br`) |
+| `--company NAME` | Company name (auto-detected from domain if omitted) |
+| `--file FILE` | File with employee names (one per line: `First Last`) |
+| `--names "Name1,Name2"` | Comma-separated employee names |
+| `--search COMPANY` | Search for employees online (Google dorks + LinkedIn) |
+| `--no-api` | Disable LinkedIn API for online search |
+| `--max-results N` | Max online search results (default: 50) |
+| `--separators SEP` | Username separators: `.` (default), `all`, `none`, or comma-separated custom list |
+| `--subdomain SUB` | Subdomains (comma-separated) |
+| `--passwords` | Generate password list |
+| `--combo` | Generate `user:password` combos |
+| `--no-users` | Skip username generation |
+| `--no-at` | Skip `user@domain` format |
+| `--no-ml` | Disable ML ranking for this command |
+| `--year-start YYYY` | Start year (default: 2020) |
+| `--year-end YYYY` | End year (default: 2026) |
+| `-o, --output FILE` | Output file |
+
+#### 6. `phone` — Phone Number Generation
+
+Generate phone number wordlists with support for multiple countries, formats, and phone types.
+
+```bash
+python wfh.py phone [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--country NAME` | Country: `brazil`, `usa`, `uk`, etc. |
+| `--ddi CODE` | Country dialing code (e.g., `55`) |
+| `--ddd CODE` | Area code (e.g., `11` for São Paulo) |
+| `--type TYPE` | Phone type: `mobile`, `landline`, `all` |
+| `--format FMT` | Output format: `e164`, `local`, `bare` |
+| `-o, --output FILE` | Output file |
+
+#### 7. `scrape` — Web Scraping
+
+Extract words from web pages (CeWL-style) with customizable depth, proxy, and authentication.
+
+```bash
+python wfh.py scrape <URL> [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `<URL>` | Target URL |
+| `--depth N` | Crawl depth |
+| `--min-len N` | Minimum word length |
+| `--max-len N` | Maximum word length |
+| `--proxy URL` | Proxy URL |
+| `--auth USER:PASS` | HTTP basic auth |
+| `--headers "K:V"` | Custom headers (repeatable) |
+| `--stopwords FILE` | Stopwords file to exclude |
+| `-o, --output FILE` | Output file |
+
+#### 8. `ocr` — OCR Text Extraction
+
+Extract text from images using EasyOCR.
+
+```bash
+python wfh.py ocr <image_file> [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `<image_file>` | Input image path |
+| `--lang LANG` | OCR language (default: `en`) |
+| `-o, --output FILE` | Output file |
+
+#### 9. `extract` — File Extraction
+
+Extract wordlists from PDF, XLSX, DOCX, and image files.
+
+```bash
+python wfh.py extract <file1> [file2 ...] [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `<files>` | Input files (PDF, XLSX, DOCX, images) |
+| `--min-len N` | Minimum word length |
+| `-o, --output FILE` | Output file |
+
+#### 10. `leet` — Leet Speak Variants
+
+Generate leet speak permutations of input words.
+
+```bash
+python wfh.py leet <word> [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `<word>` | Input word or file |
+| `-m, --mode MODE` | Mode: `basic`, `medium`, `aggressive`, `custom` |
+| `--map FILE` | Custom leet mapping file (JSON) |
+| `-o, --output FILE` | Output file |
+
+#### 11. `xor` — XOR Encryption/Decryption
+
+XOR encrypt, decrypt, or brute-force hex strings.
+
+```bash
+python wfh.py xor [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--encrypt TEXT` | Encrypt plaintext |
+| `--decrypt HEX` | Decrypt hex string with key |
+| `--brute HEX` | Brute-force XOR key (1-byte) |
+| `--key KEY` | XOR key (for encrypt/decrypt) |
+| `-o, --output FILE` | Output file |
+
+#### 12. `analyze` — Wordlist Analysis
+
+Statistical analysis of wordlists (pipal-style). Extracts length distribution, charset frequency, hashcat masks, base words, and more.
+
+```bash
+python wfh.py analyze <wordlist> [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `<wordlist>` | Input wordlist file |
+| `--top N` | Top N results per category |
+| `--export FORMAT` | Export: `json`, `csv` |
+| `-o, --output FILE` | Output file (for export) |
+
+#### 13. `merge` — Merge & Deduplicate
+
+Merge multiple wordlists with deduplication and filters.
+
+```bash
+python wfh.py merge <file1> <file2> [file3 ...] [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `<files>` | Input wordlist files |
+| `--min-len N` | Minimum length filter |
+| `--max-len N` | Maximum length filter |
+| `--sort` | Sort output |
+| `-o, --output FILE` | Output file |
+
+#### 14. `dns` — DNS/Subdomain Fuzzing
+
+Generate DNS subdomain fuzzing wordlists (alterx-style). Supports YAML templates and multi-domain input.
+
+```bash
+python wfh.py dns [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-w, --wordlist FILE` | Base wordlist |
+| `-d, --domain DOMAIN` | Target domain(s) (repeatable) |
+| `--template FILE` | YAML template file |
+| `--depth N` | Subdomain depth |
+| `-o, --output FILE` | Output file |
+
+#### 15. `pharma` — Healthcare/Pharmacy Patterns
+
+Generate credential patterns specific to Brazilian healthcare and retail pharmacy chains.
+
+```bash
+python wfh.py pharma [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `-o, --output FILE` | Output file |
+
+#### 16. `sanitize` — Wordlist Sanitization
+
+Clean and normalize wordlists: deduplicate, sort, filter by regex or length, remove blank lines and comments. Supports in-place editing.
+
+```bash
+python wfh.py sanitize <wordlist> [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `<wordlist>` | Input wordlist file |
+| `--min-len N` | Minimum length |
+| `--max-len N` | Maximum length |
+| `--regex PATTERN` | Keep only lines matching regex |
+| `--sort` | Sort output |
+| `--inplace` | Edit file in-place |
+| `-o, --output FILE` | Output file |
+
+#### 17. `reverse` — Reverse Line Order
+
+Reverse the line order of a file (equivalent to `tac`).
+
+```bash
+python wfh.py reverse <file> [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `<file>` | Input file |
+| `-o, --output FILE` | Output file |
+
+#### 18. `corp-prefixes` — Corporate Prefix Usernames
+
+Generate usernames using corporate prefix patterns — MSP, MSSP, SOC, DevOps, red/blue/purple team conventions, and more.
+
+```bash
+python wfh.py corp-prefixes [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--category CAT` | Filter by category (e.g., `msp`, `soc`, `devops`, `redteam`) |
+| `--name "First Last"` | Employee name |
+| `--domain DOMAIN` | Target domain |
+| `-o, --output FILE` | Output file |
+
+#### 19. `train` — Train ML Pattern Model
+
+Train the ML pattern learning model from existing wordlists and CSV exports.
+
+```bash
+python wfh.py train <wordlist> [options]
+```
+
+| Flag | Description |
+|------|-------------|
+| `<wordlist>` | Training wordlist (or CSV export from `analyze`) |
+| `--epochs N` | Training epochs |
+| `-o, --output FILE` | Model output path (default: `.model/pattern_model.json`) |
+
+#### 20. `sysinfo` — Hardware & Compute Info
+
+Display hardware profile (CPU, RAM, GPU) and available compute backends.
+
+```bash
+python wfh.py sysinfo
 ```
 
 ---
 
-## Methodology
+## Usage Examples
 
-This wordlist was built using:
+### Charset Generation
 
-1. **Public research** — NordPass annual reports, HIBP public datasets, academic
-   studies on Brazilian password habits (2020–2025)
-2. **Brazilian Portuguese dictionary** — ~320,000 words from the LibreOffice/Mozilla
-   spell-check corpus, filtered to ≥6 characters, with 7 orthographic variations each
-3. **Algorithmic variation engine** — rich leet-speak mappings (multiple substitutions
-   per character), case mutations, accent stripping, and suffix patterns (`123`,
-   `@123`, `2024`–`2026`) based on documented PT-BR human password-writing habits
-4. **Cultural phrases** — viral expressions, song lyrics, political slogans and memes
-   from 2014–2025, sourced from public media and social platforms
-5. **Corporate patterns** — MSP/MSSP × client naming conventions derived from public
-   job postings on LinkedIn, InfoJobs and Vagas.com.br; patterns follow documented
-   human tendencies when creating credentials in managed environments (PCFG model,
-   Weir et al.)
-6. **Manufacturer defaults** — DefaultCreds-cheat-sheet (ihebski/GitHub, 3,755+
-   entries), ICS default passwords (arnaudsoullie/GitHub), product manuals and FCC ID
-   databases
-7. **Linguistic basis** — variation rules are grounded in corpus linguistics of PT-BR
-   writing patterns, including phonetic substitutions (ç→c, ã→a) and keyboard-walk
-   sequences documented in password cracking literature
-
----
-
-## ⚠️ Ethical Disclaimer
-
-**If a password belonging to you or your organization appears in this wordlist,
-it means it matched one or more deterministic rules described above — not that
-it was extracted from any system, database, vault, PAM, or credential store.**
-
-Any reasonably skilled attacker or programmer could independently construct the
-same entries by applying the same publicly documented algorithms.
-
-This wordlist is a **security awareness tool**. It demonstrates that:
-- Patterns based on company names, years, and keyboard walks are trivially guessable
-- Leet-speak does NOT make a password strong if the base word is in a dictionary
-- Brazilian cultural references are among the first candidates in targeted attacks
-
-**Never use patterns from this list as real credentials. Use a password manager
-and generate truly random credentials.**
-
----
-
-## Check If Your Password Is in This List
-
-You can quickly verify whether your password appears in `wlist_brasil.lst` using
-built-in tools — **no extra software required**.
-
-> ⚠️ Run this check **offline**, after downloading the file locally.
-> Never type your real password into an online form or transmit it over a network.
-
-### Step 1 — Download the file
+Generate all 6-to-8 character combinations of `abc123`:
 
 ```bash
-# Linux / macOS
-wget https://raw.githubusercontent.com/mrhenrike/WordListsForHacking/main/wlist_brasil.lst
-# or
-curl -O https://raw.githubusercontent.com/mrhenrike/WordListsForHacking/main/wlist_brasil.lst
+python wfh.py charset 6 8 abc123 -o generated/charset_out.lst
 ```
+
+Using hashcat mask syntax (uppercase + 4 digits + symbol):
+
+```bash
+python wfh.py charset 6 6 --mask "?u?u?d?d?d?d?s" -o generated/mask_out.lst
+```
+
+Constrained composition — exactly 2 digits, 3 lowercase, 1 special in 6-char passwords:
+
+```bash
+python wfh.py charset 6 6 --digits 2 --lower 3 --special 1 -o generated/constrained.lst
+```
+
+### Pattern Generation
+
+Template with variables:
+
+```bash
+python wfh.py pattern -t "ACME{cod}@rd.com.br" --vars cod=1200-1300 -o generated/pattern_out.lst
+```
+
+Company-specific pattern with year:
+
+```bash
+python wfh.py pattern -t "{empresa}{ano}!" --vars empresa=acme --vars ano=2020-2026 -o generated/corp_pattern.lst
+```
+
+### Personal Target Profiling
+
+Interactive mode (CUPP-style wizard):
+
+```bash
+python wfh.py profile -o generated/target_profile.lst
+```
+
+Non-interactive with YAML:
+
+```bash
+python wfh.py profile --profile-file target.yaml --leet medium -o generated/profile.lst
+```
+
+Non-interactive CLI:
+
+```bash
+python wfh.py profile --name "João Silva" --nick joao --birth 15/03/1990 --leet basic -o generated/joao.lst
+```
+
+### Corporate Target Profiling
+
+```bash
+python wfh.py corp --leet basic -o generated/corp_acme.lst
+```
+
+### Corporate Domain Users
+
+From a file of employee names:
+
+```bash
+python wfh.py corp-users --domain acme.com.br --file employees.txt --passwords --combo -o generated/acme_users.lst
+```
+
+Manual names with custom separators:
+
+```bash
+python wfh.py corp-users --domain acme.com.br --names "João Silva,Maria Santos" --separators ".,_,-" --combo -o generated/acme_combo.lst
+```
+
+Online search with LinkedIn integration:
+
+```bash
+python wfh.py corp-users --domain acme.com.br --search "ACME Corp" --max-results 100 --passwords -o generated/acme_online.lst
+```
+
+Using all separators and ML ranking:
+
+```bash
+python wfh.py corp-users --domain acme.com.br --file names.txt --separators all --combo -o generated/acme_full.lst
+```
+
+### Phone Number Generation
+
+Brazilian mobile numbers for São Paulo (DDD 11):
+
+```bash
+python wfh.py phone --country brazil --ddd 11 --type mobile --format e164 -o generated/phones_sp.lst
+```
+
+Bare format (digits only):
+
+```bash
+python wfh.py phone --ddi 55 --ddd 21 --type all --format bare -o generated/phones_rj.lst
+```
+
+### Web Scraping
+
+```bash
+python wfh.py scrape https://acme.com.br --depth 2 --min-len 4 -o generated/scraped_acme.lst
+```
+
+With proxy and authentication:
+
+```bash
+python wfh.py scrape https://intranet.acme.com.br --proxy http://127.0.0.1:8080 --auth admin:admin --depth 3 -o generated/intranet.lst
+```
+
+### OCR Extraction
+
+```bash
+python wfh.py ocr screenshot.png --lang pt -o generated/ocr_words.lst
+```
+
+### File Extraction
+
+```bash
+python wfh.py extract report.pdf spreadsheet.xlsx document.docx --min-len 5 -o generated/extracted.lst
+```
+
+### Leet Speak Variants
+
+Basic mode:
+
+```bash
+python wfh.py leet "password" -m basic -o generated/leet_basic.lst
+```
+
+Aggressive mode from file:
+
+```bash
+python wfh.py leet wordlist.lst -m aggressive -o generated/leet_aggressive.lst
+```
+
+### XOR Crypto
+
+Encrypt:
+
+```bash
+python wfh.py xor --encrypt "secret" --key "mykey"
+```
+
+Brute-force single-byte XOR:
+
+```bash
+python wfh.py xor --brute 4a5b6c7d
+```
+
+### Wordlist Analysis
+
+Full statistical analysis with JSON export:
+
+```bash
+python wfh.py analyze passwords.lst --top 20 --export json -o generated/analysis.json
+```
+
+Quick terminal analysis:
+
+```bash
+python wfh.py analyze passwords.lst --top 10
+```
+
+### Merge Wordlists
+
+```bash
+python wfh.py merge list1.lst list2.lst list3.lst --sort --min-len 6 --max-len 32 -o generated/merged.lst
+```
+
+### DNS Fuzzing
+
+```bash
+python wfh.py dns -w subdomains.lst -d acme.com.br --depth 2 -o generated/dns_fuzz.lst
+```
+
+Multi-domain with YAML template:
+
+```bash
+python wfh.py dns -w words.lst -d acme.com.br -d acme.com --template dns_template.yaml -o generated/dns_multi.lst
+```
+
+### Healthcare / Pharmacy Patterns
+
+```bash
+python wfh.py pharma -o generated/pharma_creds.lst
+```
+
+### Sanitize Wordlist
+
+Deduplicate, sort, and filter:
+
+```bash
+python wfh.py sanitize raw_list.lst --sort --min-len 6 --max-len 64 -o generated/clean.lst
+```
+
+In-place sanitization:
+
+```bash
+python wfh.py sanitize raw_list.lst --sort --inplace
+```
+
+Filter by regex (keep only lines with at least one digit):
+
+```bash
+python wfh.py sanitize raw_list.lst --regex ".*[0-9].*" -o generated/with_digits.lst
+```
+
+### Reverse Lines
+
+```bash
+python wfh.py reverse wordlist.lst -o generated/reversed.lst
+```
+
+### Corporate Prefixes
+
+```bash
+python wfh.py corp-prefixes --name "João Silva" --domain acme.com.br --category soc -o generated/soc_users.lst
+```
+
+### ML Model Training
+
+Train from an existing wordlist:
+
+```bash
+python wfh.py train passwords.lst --epochs 10
+```
+
+Train from an analysis CSV export:
+
+```bash
+python wfh.py train analysis_export.csv --epochs 20 -o .model/custom_model.json
+```
+
+### System Info
+
+```bash
+python wfh.py sysinfo
+```
+
+### Multi-threading
+
+Increase thread count for large-scale generation:
+
+```bash
+python wfh.py --threads 50 charset 6 10 lalpha-numeric -o generated/large.lst
+```
+
+High thread count (with confirmation warnings):
+
+```bash
+python wfh.py --threads 200 corp-users --domain acme.com.br --file big_names.txt --combo -o generated/acme_fast.lst
+```
+
+### CPU / GPU Compute
+
+Force CPU backend:
+
+```bash
+python wfh.py --compute cpu charset 8 8 lalpha-numeric -o generated/cpu_out.lst
+```
+
+Use CUDA GPU:
+
+```bash
+python wfh.py --compute cuda charset 8 8 lalpha-numeric -o generated/gpu_out.lst
+```
+
+Hybrid mode (CPU + GPU):
+
+```bash
+python wfh.py --compute hybrid --threads 100 charset 6 10 mixalpha-numeric -o generated/hybrid.lst
+```
+
+### ML-based Ranking
+
+ML is enabled by default. Disable it per command:
+
+```bash
+python wfh.py corp-users --domain acme.com.br --file names.txt --no-ml -o generated/no_ml.lst
+```
+
+Disable ML globally:
+
+```bash
+python wfh.py --no-ml corp-users --domain acme.com.br --file names.txt -o generated/noml_global.lst
+```
+
+---
+
+## ML Model
+
+WFH includes a lightweight ML pattern model that learns password composition patterns from real-world wordlists. The model ranks generated candidates by likelihood, placing the most probable passwords first.
+
+**How it works:**
+
+1. **Train** the model on curated wordlists or CSV exports from `analyze`:
+   ```bash
+   python wfh.py train wordlist.lst --epochs 10
+   ```
+2. The trained model is saved to `.model/pattern_model.json` (gitignored).
+3. Subcommands like `corp-users` automatically use the model for ranking when available.
+4. Disable ML with `--no-ml` (per command) or the global `--no-ml` flag.
+
+**Training data:** The model learns character n-gram distributions, positional patterns, and structural features (e.g., "word + 4 digits + symbol" patterns). It does **not** store or reproduce individual passwords from the training set.
+
+---
+
+## Contributing
+
+Contributions are welcome. Please open an issue or pull request on [GitHub](https://github.com/mrhenrike/WordListsForHacking).
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Commit your changes (`git commit -m "Add my feature"`)
+4. Push to the branch (`git push origin feature/my-feature`)
+5. Open a Pull Request
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
+---
+
+## Disclaimer
+
+This tool and the wordlists in this repository are provided for **authorized security testing, penetration testing, education, and research purposes only**. The author is not responsible for any misuse or damage caused by this tool. Always ensure you have explicit written authorization before testing any system. Unauthorized access to computer systems is illegal in most jurisdictions.
+
+**Use responsibly. Hack ethically.**
+
+---
+
+## Credits & Inspiration
+
+WFH was built from scratch as a unified toolkit, inspired by the following projects:
+
+| Project | Inspiration |
+|---------|-------------|
+| [CUPP](https://github.com/Mebus/cupp) | Personal target profiling approach |
+| [Crunch](https://github.com/jim3ma/crunch) | Charset-based wordlist generation |
+| [CeWL](https://github.com/digininja/CeWL) | Web scraping for wordlist creation |
+| [alterx](https://github.com/projectdiscovery/alterx) | DNS/subdomain pattern generation |
+| [pipal](https://github.com/digininja/pipal) | Statistical wordlist analysis |
+| [SecLists](https://github.com/danielmiessler/SecLists) | Curated security wordlists reference |
+| [elpscrk](https://github.com/D4Vinci/elpscrk) | Permutation-based password generation with levels |
+| [BEWGor](https://github.com/berzerk0/BEWGor) | Biographical wordlist generator with zodiac/culture |
+| [intelligence-wordlist-generator](https://github.com/zfrenchee/intelligence-wordlist-generator) | OSINT keyword permutation with connectors |
+| [pnwgen](https://github.com/toxydose/pnwgen) | Phone number wordlist generation |
+
+---
+
+## Brazilian Wordlist (wlist_brasil.lst)
+
+The file `passwords/wlist_brasil.lst` is the largest curated Brazilian password corpus available, with **~3.88 million unique entries**. It was generated and maintained using the WFH tool itself.
+
+### How It Was Built
+
+| Source Type | Description |
+|-------------|-------------|
+| **Pattern Study** | Brazilian password patterns analyzed from anonymized leak/breach data via IntelX, HudsonRock, and similar threat intelligence platforms |
+| **Corporate Patterns** | Credential patterns from Brazilian corporate environments (healthcare, retail, energy, government, financial, judicial sectors) — structural patterns only, no PII |
+| **OSINT (Surface Web)** | Massive public OSINT collection from surface web sources |
+| **Cultural Analysis** | Brazilian cultural patterns: soccer clubs, religious phrases, political expressions, regional slang, DDD area codes |
+| **ML-Enhanced** | WFH's ML model trained on 500K+ password shapes to rank and prioritize pattern generation |
+
+### What's Inside
+
+- Corporate credential patterns (brand+store_code, brand+CNPJ, platform+CNPJ)
+- Personal password patterns (name+date, name+number, keyboard walks)
+- Healthcare and retail chain patterns
+- Brazilian cultural phrases and expressions
+- Leet speak variations of common Brazilian passwords
+- Threat intelligence extracted passwords (non-numeric, min 5 chars)
+
+### Sanitization Rules Applied
+
+- Minimum 5 characters
+- Pure numeric entries removed (except CPF 11-digit and CNPJ 14-digit patterns)
+- Formatting separators (`.`, `/`, `-`) stripped from CPF/CNPJ patterns
+- Fully deduplicated
+- No real PII or identifiable data
+
+---
+
+## Is My Password in This List?
+
+If you want to check whether your password appears in `wlist_brasil.lst` (or any other wordlist), you can use the following methods:
+
+### Using grep (Linux/macOS)
+
+```bash
+grep -qxF 'YourPasswordHere' passwords/wlist_brasil.lst && echo "FOUND — change it!" || echo "Not found"
+```
+
+### Using PowerShell (Windows)
 
 ```powershell
-# Windows PowerShell
-Invoke-WebRequest `
-  -Uri "https://raw.githubusercontent.com/mrhenrike/WordListsForHacking/main/wlist_brasil.lst" `
-  -OutFile "wlist_brasil.lst"
+if (Select-String -Path passwords\wlist_brasil.lst -Pattern '^YourPasswordHere$' -SimpleMatch -Quiet) { "FOUND — change it!" } else { "Not found" }
 ```
 
-### Step 2 — Search for your password
+### Using Python
 
-Replace `yourpassword` with the password you want to check.
+```python
+import sys
+password = sys.argv[1]
+with open("passwords/wlist_brasil.lst", "r") as f:
+    found = any(line.strip() == password for line in f)
+print("FOUND — change it!" if found else "Not found")
+```
+
+### Using WFH Analyze
 
 ```bash
-# Linux / macOS — exact match, case-sensitive
-grep -Fx "yourpassword" wlist_brasil.lst \
-  && echo "⚠️  FOUND — CHANGE YOUR PASSWORD NOW" \
-  || echo "✓  Not found in this list"
+# Create a file with your password and analyze it
+echo "YourPassword" > /tmp/check.txt
+python wfh.py analyze /tmp/check.txt --format text
 ```
 
-```bash
-# Linux / macOS — case-insensitive (catches leet-speak variants too)
-grep -Fix "yourpassword" wlist_brasil.lst \
-  && echo "⚠️  FOUND — CHANGE YOUR PASSWORD NOW" \
-  || echo "✓  Not found in this list"
-```
+### If Your Password Was Found
 
-```powershell
-# Windows PowerShell — exact match
-$result = Select-String -Path "wlist_brasil.lst" -Pattern "^yourpassword$" -CaseSensitive
-if ($result) { Write-Host "⚠️  FOUND — CHANGE YOUR PASSWORD NOW" -ForegroundColor Red }
-else          { Write-Host "✓  Not found in this list" -ForegroundColor Green }
-```
+If your password appears in this list, it is considered **compromised** and should be changed immediately. Here are recommended actions:
 
-```cmd
-:: Windows CMD — exact match
-findstr /x /c:"yourpassword" wlist_brasil.lst
-:: If output appears: your password was found. Change it immediately.
-```
-
-### Step 3 — What to do if your password is found
-
-1. **Change it immediately** in every service where you use it
-2. **Never reuse passwords** — each account must have a unique credential
-3. **Use a password manager**: [Bitwarden](https://bitwarden.com) (free/open-source),
-   KeePass, 1Password, or your OS built-in vault
-4. **Generate truly random passwords** — avoid: names, dates, keyboard walks,
-   company names, football teams, song lyrics, or leet-speak of dictionary words
-5. **Enable MFA/2FA** on every account that supports it
-
-> **Important:** if your password is found here, it does **not** mean it was
-> extracted from a specific breach, vault, or PAM system. It means your password
-> follows a **predictable pattern** that this wordlist was built to detect — and
-> that any motivated attacker would try first. Treat it as a wake-up call.
+1. **Change your password immediately** on all services where you use it
+2. **Enable MFA/2FA** (Multi-Factor Authentication) on all accounts — use an authenticator app (Google Authenticator, Microsoft Authenticator, Authy) instead of SMS when possible
+3. **Use a password manager** (Bitwarden, 1Password, KeePass) to generate and store unique passwords for each service
+4. **Never reuse passwords** across multiple services
+5. **Request a password reset** on critical services (banking, email, corporate accounts)
+6. **Check for breaches** at [Have I Been Pwned](https://haveibeenpwned.com/) to see if your email/accounts have been compromised
+7. **Review account activity** for any unauthorized access
+8. **Use passwords with at least 14 characters** combining uppercase, lowercase, digits, and special characters — or use passphrases (4+ random words)
 
 ---
 
-## Legal Notice
+<p align="center">
+  Created by <a href="https://github.com/mrhenrike">André Henrique (@mrhenrike)</a> — <a href="https://github.com/Uniao-Geek">União Geek</a>
+</p>
 
-- Use only in environments where you have **explicit written authorization**
-- Never use for unauthorized access to any system
-- Author accepts no liability for misuse
-- Maintain attribution when redistributing
-
----
-
-## Changelog
-
-| Version | Date | Changes |
-|---------|------|---------|
-| v2.0.0 | 2026-03-30 | Complete rewrite: PT-BR dictionary (320k words + 7 variations), rich leet mapping, Brazilian cultural/music/memes phrases (2014–2025), 200+ vendor defaults (SIEM/EDR/OT/Cloud/Linux/HW-mgmt), user:password combo file, removal of purely numeric entries and entries <6 chars, comprehensive READMEs |
-| v1.x | 2022–2025 | Previous versions — manual wordlists and ad-hoc collections |
+<p align="center">
+  <a href="README.pt-BR.md">Leia em Português</a>
+</p>
