@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-wfh.py — WordList For Hacking v1.4.0
+wfh.py — WordList For Hacking v1.5.0
 
 Unified wordlist generation tool for pentest and red team operations.
 Supports: charset, pattern, profile, corp, phone, scrape, ocr, extract,
@@ -75,7 +75,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "1.4.0"
+VERSION = "1.5.0"
 
 _BANNER_ART = (
     " __          _______ _    _         \n"
@@ -97,22 +97,23 @@ BANNER = (
 MENU = f"""
 {Fore.CYAN}=== MAIN MENU ==={Style.RESET_ALL}
 
-  {Fore.GREEN}[1]{Style.RESET_ALL}  charset   — Generate by charset and length
-  {Fore.GREEN}[2]{Style.RESET_ALL}  pattern   — Generate by template with variables
-  {Fore.GREEN}[3]{Style.RESET_ALL}  profile   — Interactive personal target profiling
-  {Fore.GREEN}[4]{Style.RESET_ALL}  corp      — Interactive corporate target profiling
-  {Fore.GREEN}[5]{Style.RESET_ALL}  phone     — Generate phone number wordlists
-  {Fore.GREEN}[6]{Style.RESET_ALL}  scrape    — Web scraping wordlist extraction
-  {Fore.GREEN}[7]{Style.RESET_ALL}  ocr       — Extract text from image via OCR
-  {Fore.GREEN}[8]{Style.RESET_ALL}  extract   — Extract wordlist from files (pdf/xlsx/docx/img)
-  {Fore.GREEN}[9]{Style.RESET_ALL}  leet      — Leet speak variants (basic/medium/aggressive/custom)
-  {Fore.GREEN}[10]{Style.RESET_ALL} xor       — XOR encryption / brute-force
-  {Fore.GREEN}[11]{Style.RESET_ALL} analyze   — Statistical analysis of wordlist
-  {Fore.GREEN}[12]{Style.RESET_ALL} merge     — Merge and deduplicate wordlists
-  {Fore.GREEN}[13]{Style.RESET_ALL} dns       — DNS/subdomain fuzzing wordlist
-  {Fore.GREEN}[14]{Style.RESET_ALL} pharma    — Brazilian pharmacy and health plan patterns
-  {Fore.GREEN}[15]{Style.RESET_ALL} sanitize  — Clean wordlist (dedupe, sort, filter, remove blanks/#)
-  {Fore.GREEN}[16]{Style.RESET_ALL} reverse   — Reverse line order (tac)
+  {Fore.GREEN}[1]{Style.RESET_ALL}  charset     — Generate by charset and length
+  {Fore.GREEN}[2]{Style.RESET_ALL}  pattern     — Generate by template with variables
+  {Fore.GREEN}[3]{Style.RESET_ALL}  profile     — Interactive personal target profiling
+  {Fore.GREEN}[4]{Style.RESET_ALL}  corp        — Interactive corporate target profiling
+  {Fore.GREEN}[5]{Style.RESET_ALL}  corp-users  — Corporate domain user/password generation
+  {Fore.GREEN}[6]{Style.RESET_ALL}  phone       — Generate phone number wordlists
+  {Fore.GREEN}[7]{Style.RESET_ALL}  scrape      — Web scraping wordlist extraction
+  {Fore.GREEN}[8]{Style.RESET_ALL}  ocr         — Extract text from image via OCR
+  {Fore.GREEN}[9]{Style.RESET_ALL}  extract     — Extract wordlist from files (pdf/xlsx/docx/img)
+  {Fore.GREEN}[10]{Style.RESET_ALL} leet        — Leet speak variants (basic/medium/aggressive/custom)
+  {Fore.GREEN}[11]{Style.RESET_ALL} xor         — XOR encryption / brute-force
+  {Fore.GREEN}[12]{Style.RESET_ALL} analyze     — Statistical analysis of wordlist
+  {Fore.GREEN}[13]{Style.RESET_ALL} merge       — Merge and deduplicate wordlists
+  {Fore.GREEN}[14]{Style.RESET_ALL} dns         — DNS/subdomain fuzzing wordlist
+  {Fore.GREEN}[15]{Style.RESET_ALL} pharma      — Brazilian pharmacy and health plan patterns
+  {Fore.GREEN}[16]{Style.RESET_ALL} sanitize    — Clean wordlist (dedupe, sort, filter, remove blanks/#)
+  {Fore.GREEN}[17]{Style.RESET_ALL} reverse     — Reverse line order (tac)
   {Fore.GREEN}[0]{Style.RESET_ALL}  Exit
 """
 
@@ -394,6 +395,99 @@ def cmd_corp(args: argparse.Namespace) -> None:
     leet_mode = getattr(args, "leet", "basic") or profile.get("leet_mode", "basic")
     _info(f"Generating corporate wordlist [leet={leet_mode}]...")
     gen = generate_from_corp_profile(profile, leet_mode=leet_mode)
+    count = _write_output(gen, args.output)
+    _ok(f"Generated: {count:,} entries")
+
+
+def cmd_corp_users(args: argparse.Namespace) -> None:
+    """Handler for corporate domain user/password generation."""
+    from wfh_modules.domain_users import (
+        interactive_domain_users_wizard,
+        run_domain_users,
+        collect_names_from_file,
+        collect_names_online,
+        generate_subdomain_admin_users,
+        DOMAIN_SEPARATORS,
+    )
+
+    params: dict = {}
+
+    # ── Interactive mode (no --domain provided) ────────────────────────────
+    if not getattr(args, "domain", None):
+        params = interactive_domain_users_wizard()
+    else:
+        domain = args.domain
+        company_name = getattr(args, "company", None) or domain.split(".")[0]
+        names: list[str] = []
+
+        # Collect names from file
+        if getattr(args, "file", None):
+            _info(f"Loading names from: {args.file}")
+            try:
+                names = collect_names_from_file(args.file)
+                _ok(f"Loaded {len(names)} name(s) from file")
+            except FileNotFoundError as exc:
+                _err(str(exc))
+                return
+
+        # Collect names online (Google dorks + optional LinkedIn API)
+        if getattr(args, "search", None):
+            _info(f"Searching online for employees of '{args.search}'...")
+            online = collect_names_online(
+                args.search,
+                domain=domain,
+                max_results=getattr(args, "max_results", 50),
+                use_linkedin_api=not getattr(args, "no_api", False),
+            )
+            _ok(f"Found {len(online)} name(s) online")
+            names.extend(online)
+
+        # Manual name list (args.names is a single string)
+        if getattr(args, "names", None):
+            raw_names = args.names if isinstance(args.names, str) else ",".join(args.names)
+            names.extend([n.strip() for n in raw_names.split(",") if n.strip()])
+
+        # Parse separators
+        sep_raw = getattr(args, "separators", None)
+        if sep_raw:
+            separators = [s.strip() for s in sep_raw.split(",")]
+            # Handle empty string separator (literal '' or "")
+            if "''" in sep_raw or '""' in sep_raw:
+                separators.append("")
+        else:
+            separators = DOMAIN_SEPARATORS
+
+        subdomains = []
+        if getattr(args, "subdomain", None):
+            subdomains = [s.strip() for s in args.subdomain.split(",") if s.strip()]
+
+        year_start = int(getattr(args, "year_start", None) or 2020)
+        year_end = int(getattr(args, "year_end", None) or 2026)
+
+        params = {
+            "domain": domain,
+            "company_name": company_name,
+            "names": names,
+            "separators": separators,
+            "subdomains": subdomains,
+            "gen_users": not getattr(args, "no_users", False),
+            "gen_passwords": getattr(args, "passwords", False),
+            "gen_combo": getattr(args, "combo", False),
+            "year_start": year_start,
+            "year_end": year_end,
+            "with_at_domain": not getattr(args, "no_at", False),
+        }
+
+    if not params.get("names") and not params.get("subdomains"):
+        _warn("No names or subdomains provided. Use --file, --search, --names, or --subdomain.")
+        return
+
+    _info(
+        f"Generating for domain: {params.get('domain')} | "
+        f"names: {len(params.get('names', []))} | "
+        f"subdomains: {len(params.get('subdomains', []))}"
+    )
+    gen = run_domain_users(params)
     count = _write_output(gen, args.output)
     _ok(f"Generated: {count:,} entries")
 
@@ -844,6 +938,11 @@ def interactive_menu() -> None:
         cmd_corp(ns)
 
     elif choice == "5":
+        # corp-users interactive — delegate entirely to wizard
+        ns.domain = None
+        cmd_corp_users(ns)
+
+    elif choice == "6":
         ns.country = input("  Country (e.g. brazil, usa, uk): ").strip() or None
         ns.state = input("  State/region (e.g. SP, NY): ").strip() or None
         ns.ddi = input("  DDI override (or Enter): ").strip() or None
@@ -853,7 +952,7 @@ def interactive_menu() -> None:
         ns.formats = input("  Formats (e164,local,bare — comma-sep): ").strip() or "e164,local"
         cmd_phone(ns)
 
-    elif choice == "6":
+    elif choice == "7":
         ns.url = input("  URL to crawl: ").strip()
         ns.depth = int(input("  Depth (default 2): ").strip() or "2")
         ns.min_word = int(input("  Min word length (6): ").strip() or "6")
@@ -862,21 +961,26 @@ def interactive_menu() -> None:
         ns.meta = input("  Extract metadata? [y/N]: ").strip().lower() in ("y", "yes")
         ns.auth = None
         ns.delay = 0.5
+        ns.proxy = None
+        ns.user_agent = None
+        ns.headers = None
+        ns.no_stopwords = False
+        ns.stopwords_file = None
         cmd_scrape(ns)
 
-    elif choice == "7":
+    elif choice == "8":
         ns.image = input("  Image path: ").strip()
         ns.lang = input("  OCR languages (default: pt,en): ").strip() or "pt,en"
         cmd_ocr(ns)
 
-    elif choice == "8":
+    elif choice == "9":
         files_raw = input("  Files (space-separated): ").strip()
         ns.files = files_raw.split()
         ns.min_len = int(input("  Min length (4): ").strip() or "4")
         ns.max_len = int(input("  Max length (64): ").strip() or "64")
         cmd_extract(ns)
 
-    elif choice == "9":
+    elif choice == "10":
         ns.word = input("  Base word: ").strip()
         ns.mode = input("  Mode (basic/medium/aggressive/custom): ").strip() or "basic"
         ns.custom_map = ""
@@ -885,7 +989,7 @@ def interactive_menu() -> None:
         ns.max_results = int(input("  Max results (10000): ").strip() or "10000")
         cmd_leet(ns)
 
-    elif choice == "10":
+    elif choice == "11":
         sub = input("  [1] Brute-force  [2] Encrypt  [3] Decrypt: ").strip()
         ns.brute = None
         ns.encrypt = None
@@ -901,12 +1005,16 @@ def interactive_menu() -> None:
             ns.key = input("  Key: ").strip()
         cmd_xor(ns)
 
-    elif choice == "11":
+    elif choice == "12":
         ns.wordlist = input("  Wordlist to analyze: ").strip()
         ns.top = int(input("  Top N (20): ").strip() or "20")
+        ns.masks = input("  Run Hashcat mask analysis? [y/N]: ").strip().lower() in ("y", "yes")
+        ns.base_words = False
+        ns.base_output = None
+        ns.format = "text"
         cmd_analyze(ns)
 
-    elif choice == "12":
+    elif choice == "13":
         files_raw = input("  Files to merge (space-separated): ").strip()
         ns.files = files_raw.split()
         ns.min_len = int(input("  Min length (6): ").strip() or "6")
@@ -917,20 +1025,25 @@ def interactive_menu() -> None:
         ns.sort = input("  Sort (alpha/length/random or Enter to skip): ").strip() or None
         cmd_merge(ns)
 
-    elif choice == "13":
+    elif choice == "14":
         ns.domain = input("  Target domain: ").strip()
         ns.wordlist = input("  Words file (or Enter): ").strip() or None
         ns.words = []
         ns.template = None
+        ns.template_file = None
+        ns.domain_list = None
+        ns.separator = None
+        ns.match_regex = None
+        ns.filter_regex = None
         ns.no_prefixes = False
         ns.no_suffixes = False
         cmd_dns(ns)
 
-    elif choice == "14":
+    elif choice == "15":
         ns.codes = input("  Store codes (e.g. 1200-1300 or 1200,1201, Enter for default): ").strip() or None
         cmd_pharma(ns)
 
-    elif choice == "15":
+    elif choice == "16":
         ns.wordlist = input("  Wordlist to sanitize: ").strip()
         ns.sort = input("  Sort (alpha/alpha-rev/length/length-rev/random or Enter): ").strip() or None
         min_raw = input("  Min length (Enter to skip): ").strip()
@@ -947,7 +1060,7 @@ def interactive_menu() -> None:
             ns.output = input("  Output file (Enter for stdout): ").strip() or None
         cmd_sanitize(ns)
 
-    elif choice == "16":
+    elif choice == "17":
         ns.wordlist = input("  Wordlist to reverse: ").strip()
         ns.inplace = input("  Overwrite original? [y/N]: ").strip().lower() in ("y", "yes")
         if not ns.inplace:
@@ -983,6 +1096,10 @@ def build_parser() -> argparse.ArgumentParser:
   python wfh.py profile --profile-file target.yaml -o wordlist.lst
   python wfh.py profile --year-start 2000 --year-end 2026 --suffix-range 00-99
   python wfh.py corp
+  python wfh.py corp-users --domain empresa.com.br --file employees.txt -o users.lst
+  python wfh.py corp-users --domain empresa.com.br --search "Empresa XPTO" --passwords -o combo.lst
+  python wfh.py corp-users --domain empresa.com.br --names "João Silva,Maria Souza" --combo -o combo.lst
+  python wfh.py corp-users --domain securonix.net --subdomain a1t3ngrt -o admins.lst
   python wfh.py phone --country brazil --state SP --type mobile -o phones_sp.lst
   python wfh.py phone --country usa --state NY --formats e164,local -o phones_ny.lst
   python wfh.py phone --ddi 55 --ddd 11 --pattern "9XXXX-XXXX" -o custom.lst
@@ -1071,6 +1188,66 @@ def build_parser() -> argparse.ArgumentParser:
                        choices=["basic", "medium", "aggressive", "none"],
                        help="Leet speak mode")
     p_co.add_argument("-o", "--output", help="Output file")
+
+    # ── corp-users ────────────────────────────────────────────────────────
+    p_cu = sub.add_parser(
+        "corp-users",
+        help="Generate corporate domain usernames and passwords",
+        description=(
+            "Generate corporate username/password lists from employee names.\n\n"
+            "Name sources (choose one or combine):\n"
+            "  --file       Load names from txt/csv/xlsx/pdf file\n"
+            "  --search     Search online via Google dorks (no API needed)\n"
+            "  --names      Comma-separated names inline\n\n"
+            "LinkedIn API (optional):\n"
+            "  Set LINKEDIN_RAPIDAPI_KEY env var to enable API-based search.\n"
+            "  Without it, Google dorks are used automatically.\n\n"
+            "Username patterns generated (with all separators . _ - ''):\n"
+            "  firstname.lastname  f.lastname  flastname  lastname.firstname\n"
+            "  firstname  lastname  firstnamel  initials  and 15+ more\n\n"
+            "Examples:\n"
+            "  wfh.py corp-users --domain empresa.com.br --file employees.txt\n"
+            "  wfh.py corp-users --domain empresa.com.br --search 'Acme Corp'\n"
+            "  wfh.py corp-users --domain empresa.com.br --names 'João Silva,Maria Souza'\n"
+            "  wfh.py corp-users --domain empresa.com.br --file names.txt --combo -o combo.lst\n"
+            "  wfh.py corp-users --domain securonix.net --subdomain a1t3ngrt -o admins.lst\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_cu.add_argument("--domain", default="",
+                       help="Company domain (e.g. empresa.com.br)")
+    p_cu.add_argument("--company", default="",
+                       help="Company trade name (for passwords). Defaults to domain prefix.")
+    # Name sources
+    p_cu.add_argument("--file", metavar="FILE",
+                       help="File with employee names (txt/csv/xlsx/pdf/docx)")
+    p_cu.add_argument("--search", metavar="COMPANY_NAME",
+                       help="Search online for employee names (Google dorks)")
+    p_cu.add_argument("--names", metavar="NAME1,NAME2,...",
+                       help="Comma-separated full names inline")
+    p_cu.add_argument("--max-results", dest="max_results", type=int, default=50,
+                       help="Max online search results (default: 50)")
+    p_cu.add_argument("--no-api", dest="no_api", action="store_true",
+                       help="Skip LinkedIn API even if LINKEDIN_RAPIDAPI_KEY is set")
+    # Username options
+    p_cu.add_argument("--separators", metavar="SEP1,SEP2",
+                       help="Username separators (default: . _ - ''). Use '' for empty.")
+    p_cu.add_argument("--subdomain", metavar="SUB1,SUB2",
+                       help="Subdomain(s) for admin patterns (e.g. a1t3ngrt,webmail)")
+    p_cu.add_argument("--no-users", dest="no_users", action="store_true",
+                       help="Skip username generation (only passwords or combo)")
+    p_cu.add_argument("--no-at", dest="no_at", action="store_true",
+                       help="Omit @domain suffix from usernames")
+    # Password and combo options
+    p_cu.add_argument("--passwords", action="store_true",
+                       help="Also generate password list")
+    p_cu.add_argument("--combo", action="store_true",
+                       help="Generate user:password combo list")
+    p_cu.add_argument("--year-start", dest="year_start", type=int, default=2020,
+                       help="Password year range start (default: 2020)")
+    p_cu.add_argument("--year-end", dest="year_end", type=int, default=2026,
+                       help="Password year range end (default: 2026)")
+    p_cu.add_argument("-o", "--output", help="Output file")
 
     # ── phone ─────────────────────────────────────────────────────────────
     p_ph2 = sub.add_parser("phone", help="Generate phone number wordlists")
@@ -1278,11 +1455,12 @@ def main() -> None:
 
     # Dispatch to subcommand handler
     handlers = {
-        "charset":  cmd_charset,
-        "pattern":  cmd_pattern,
-        "profile":  cmd_profile,
-        "corp":     cmd_corp,
-        "phone":    cmd_phone,
+        "charset":    cmd_charset,
+        "pattern":    cmd_pattern,
+        "profile":    cmd_profile,
+        "corp":       cmd_corp,
+        "corp-users": cmd_corp_users,
+        "phone":      cmd_phone,
         "scrape":   cmd_scrape,
         "ocr":      cmd_ocr,
         "extract":  cmd_extract,
