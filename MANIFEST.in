@@ -5,5 +5,5 @@ include requirements.txt
 include SECURITY.md
 include CONTRIBUTING.md
 include CODE_OF_CONDUCT.md
-recursive-include data *.json
+recursive-include data *.json *.txt
 recursive-include wfh_modules *.py *.json
