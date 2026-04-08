@@ -125,7 +125,12 @@ jobs:
           import wfh_modules.ocr_extractor
           import wfh_modules.leet_permuter
           import wfh_modules.mangler
-          print('All module imports OK')
+          import wfh_modules.default_creds
+          import wfh_modules.isp_keygen
+          import wfh_modules.seclists_trainer
+          import wfh_modules.combiner
+          import wfh_modules.password_dna
+          print('All 27 module imports OK')
           "
 
   version-check:
@@ -147,7 +152,7 @@ jobs:
           import re, sys
           with open('wfh.py') as f:
               for line in f:
-                  m = re.search(r'v(\d+\.\d+\.\d+)', line)
+                  m = re.match(r'^VERSION\s*=\s*[\"''](\d+\.\d+\.\d+)[\"'']', line)
                   if m:
                       print(m.group(1))
                       sys.exit(0)
