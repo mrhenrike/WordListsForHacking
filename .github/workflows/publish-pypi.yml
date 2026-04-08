@@ -4,6 +4,12 @@ on:
   release:
     types: [published]
 
+# Minimal permissions — only id-token for OIDC, attestations for provenance
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
 jobs:
   build-and-publish:
     name: Build and publish to PyPI
@@ -11,11 +17,11 @@ jobs:
     environment:
       name: pypi
       url: https://pypi.org/p/wfh-wordlist
-    permissions:
-      id-token: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -28,10 +34,21 @@ jobs:
       - name: Build package
         run: python -m build
 
-      - name: Verify package
-        run: twine check dist/*
+      - name: Verify package integrity
+        run: |
+          twine check dist/*
+          echo "=== SHA256 ==="
+          sha256sum dist/*
+          echo "=== Package contents ==="
+          python -m zipfile -l dist/*.whl | head -30
 
-      - name: Publish to PyPI (Trusted Publisher)
-        uses: pypa/gh-action-pypi-publish@release/v1
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'dist/*'
+
+      - name: Publish to PyPI (Trusted Publisher OIDC)
+        uses: pypa/gh-action-pypi-publish@v1.13.0
         with:
           print-hash: true
+          attestations: true

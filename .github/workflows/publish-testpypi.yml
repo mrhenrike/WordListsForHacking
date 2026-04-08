@@ -3,6 +3,10 @@ name: "Test: Publish to TestPyPI"
 on:
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
   test-publish:
     runs-on: ubuntu-latest
@@ -10,11 +14,10 @@ jobs:
       name: testpypi
       url: https://test.pypi.org/p/wfh-wordlist
 
-    permissions:
-      id-token: write
-
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         with:
@@ -24,8 +27,11 @@ jobs:
 
       - run: python -m build
 
+      - name: Verify package
+        run: twine check dist/*
+
       - name: Publish to TestPyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@v1.13.0
         with:
           repository-url: https://test.pypi.org/legacy/
           print-hash: true
