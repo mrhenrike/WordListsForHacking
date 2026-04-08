@@ -537,7 +537,7 @@ def export_stats_markdown(
         Markdown-formatted report string.
     """
     lines: list[str] = []
-    lines.append(f"# Wordlist Analysis Report")
+    lines.append("# Wordlist Analysis Report")
     lines.append(f"**Source:** `{filepath}`\n")
 
     lines.append("## Summary")
@@ -577,7 +577,7 @@ def export_stats_markdown(
     lines.append("")
 
     if mask_data:
-        lines.append(f"## Hashcat Mask Analysis")
+        lines.append("## Hashcat Mask Analysis")
         lines.append(f"**Unique masks:** {mask_data['unique_masks']:,}\n")
         lines.append(f"### Top {len(mask_data['top_masks'])} Masks")
         lines.append("| # | Mask | Count |")
