@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/github/stars/mrhenrike/WordListsForHacking?style=flat-square" alt="GitHub Stars">
   <img src="https://img.shields.io/github/license/mrhenrike/WordListsForHacking?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/version-2.2.0-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.3.0-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/python-3.8%2B-blue?style=flat-square&logo=python&logoColor=white" alt="Python 3.8+">
   <img src="https://img.shields.io/pypi/v/wfh-wordlist?style=flat-square&logo=pypi&logoColor=white&color=green" alt="PyPI">
 </p>
@@ -79,6 +79,7 @@ python wfh.py --help       # full CLI help
 | 21 | `mangle` | Word mangling rules |
 | 22 | `default-creds` | Query default credentials database (IoT/routers/printers/ICS) |
 | 23 | `isp-keygen` | ISP default WiFi password keyspace generator |
+| 24 | `combiner` | Keyword combiner (intelligence-wordlist-generator style) |
 
 > **Detailed syntax and examples for each subcommand:** [Wiki — Subcommands](https://github.com/mrhenrike/WordListsForHacking/wiki)
 

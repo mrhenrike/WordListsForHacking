@@ -1,22 +1,20 @@
 """
-analyzer.py — Análise estatística de wordlists (estilo Pipal).
+analyzer.py — Statistical wordlist analysis (Pipal parity).
 
-Métricas:
-  - Total de entradas, únicas, duplicatas
-  - Comprimento: mínimo, máximo, médio, distribuição
-  - Top N senhas mais frequentes
-  - Distribuição de tipos de char (só letras, só números, misto)
-  - Posição de números e especiais na senha
-  - Análise de máscaras estilo Hashcat (?u?l?d?s)
-  - Extração de palavras-base (sem sufixo numérico/especial)
-  - Export em JSON e CSV
+Metrics:
+  - Total entries, unique, duplicates
+  - Length: min, max, avg, distribution, buckets (1-6, 1-8, >8)
+  - Top N most frequent entries
+  - Char type distribution (15 pipal categories + char set ordering)
+  - Number/special position analysis
+  - Trailing digits: exactly 1/2/3 digits at end, last digit 0-9 histogram
+  - Character frequency by position
+  - Hashcat mask analysis (?u?l?d?s)
+  - Base word extraction with frequency ranking
+  - Export: JSON, CSV, Markdown
 
-Uso:
-  wfh.py analyze wordlist.lst
-  wfh.py analyze wordlist.lst --top 20 --masks --base-words --format json
-
-Autor: André Henrique (@mrhenrike)
-Versão: 1.1.0
+Author: André Henrique (@mrhenrike)
+Version: 2.0.0
 """
 from __future__ import annotations
 
@@ -37,6 +35,63 @@ _LETTER_RE = re.compile(r"[a-zA-ZÀ-ÿ]")
 # Regex para strip de sufixo numérico/especial ao extrair palavras-base
 _TRAILING_JUNK_RE = re.compile(r"[^a-zA-ZÀ-ÿ]+$")
 _LEADING_JUNK_RE = re.compile(r"^[^a-zA-ZÀ-ÿ]+")
+
+
+def _classify_ordering(entry: str) -> str:
+    """Classify char set ordering (pipal: stringdigit, digitstring, etc.)."""
+    pattern = ""
+    prev = ""
+    for ch in entry:
+        if ch.isalpha():
+            cur = "string"
+        elif ch.isdigit():
+            cur = "digit"
+        else:
+            cur = "special"
+        if cur != prev:
+            pattern += cur
+            prev = cur
+    return pattern or "empty"
+
+
+def _classify_composition(entry: str) -> str:
+    """Classify into pipal's 15 char set categories."""
+    has_lower = any(c.islower() for c in entry)
+    has_upper = any(c.isupper() for c in entry)
+    has_digit = any(c.isdigit() for c in entry)
+    has_special = bool(_SPECIAL_RE.search(entry))
+
+    if has_lower and not has_upper and not has_digit and not has_special:
+        return "loweralpha"
+    if has_upper and not has_lower and not has_digit and not has_special:
+        return "upperalpha"
+    if has_digit and not has_lower and not has_upper and not has_special:
+        return "numeric"
+    if has_special and not has_lower and not has_upper and not has_digit:
+        return "special"
+    if has_lower and has_upper and not has_digit and not has_special:
+        return "mixedalpha"
+    if has_lower and has_digit and not has_upper and not has_special:
+        return "loweralphanum"
+    if has_upper and has_digit and not has_lower and not has_special:
+        return "upperalphanum"
+    if has_lower and has_upper and has_digit and not has_special:
+        return "mixedalphanum"
+    if has_lower and has_special and not has_upper and not has_digit:
+        return "loweralphaspecial"
+    if has_upper and has_special and not has_lower and not has_digit:
+        return "upperalphaspecial"
+    if has_digit and has_special and not has_lower and not has_upper:
+        return "specialnum"
+    if has_lower and has_digit and has_special and not has_upper:
+        return "loweralphaspecialnum"
+    if has_upper and has_digit and has_special and not has_lower:
+        return "upperalphaspecialnum"
+    if has_lower and has_upper and has_special and not has_digit:
+        return "mixedalphaspecial"
+    if has_lower and has_upper and has_digit and has_special:
+        return "mixedalphaspecialnum"
+    return "other"
 
 
 def analyze_wordlist(
@@ -97,6 +152,46 @@ def analyze_wordlist(
     sp_start = sum(1 for e in entries if e and _SPECIAL_RE.match(e[0]))
     sp_end = sum(1 for e in entries if e and _SPECIAL_RE.match(e[-1]))
 
+    # ── Pipal-style enhancements ─────────────────────────────────────────────
+
+    # Length buckets (pipal parity)
+    len_1_6 = sum(1 for l in lengths if 1 <= l <= 6)
+    len_1_8 = sum(1 for l in lengths if 1 <= l <= 8)
+    len_gt8 = sum(1 for l in lengths if l > 8)
+
+    # Last digit histogram (pipal parity)
+    last_digit_hist: Counter = Counter()
+    trailing_1 = 0
+    trailing_2 = 0
+    trailing_3 = 0
+    for e in entries:
+        if e and e[-1].isdigit():
+            last_digit_hist[e[-1]] += 1
+            trailing_1 += 1
+            if len(e) >= 2 and e[-2].isdigit():
+                trailing_2 += 1
+                if len(e) >= 3 and e[-3].isdigit():
+                    trailing_3 += 1
+
+    # Char set ordering (pipal parity: stringdigit, digitstring, etc.)
+    ordering: Counter = Counter()
+    for e in entries:
+        ordering[_classify_ordering(e)] += 1
+
+    # Char set composition (15 pipal categories)
+    composition: Counter = Counter()
+    for e in entries:
+        composition[_classify_composition(e)] += 1
+
+    # First-upper-last-digit / first-upper-last-special (pipal parity)
+    first_upper_last_digit = sum(
+        1 for e in entries if len(e) >= 2 and e[0].isupper() and e[-1].isdigit()
+    )
+    first_upper_last_special = sum(
+        1 for e in entries
+        if len(e) >= 2 and e[0].isupper() and not e[-1].isalnum()
+    )
+
     return {
         "total":          total,
         "unique":         unique,
@@ -105,6 +200,11 @@ def analyze_wordlist(
         "max_length":     max_len,
         "avg_length":     round(avg_len, 2),
         "length_distribution": dict(sorted(length_dist.items())),
+        "length_buckets": {
+            "1_to_6":  len_1_6,
+            "1_to_8":  len_1_8,
+            "over_8":  len_gt8,
+        },
         "char_types": {
             "only_alpha":   only_alpha,
             "only_digits":  only_digits,
@@ -114,6 +214,8 @@ def analyze_wordlist(
             "has_number":   has_number,
             "mixed":        mixed,
         },
+        "char_composition": dict(composition.most_common()),
+        "char_ordering": dict(ordering.most_common()),
         "top_passwords":  top,
         "number_positions": {
             "starts_with_number": num_start,
@@ -123,6 +225,14 @@ def analyze_wordlist(
             "starts_with_special": sp_start,
             "ends_with_special":   sp_end,
         },
+        "trailing_digits": {
+            "exactly_1_digit": trailing_1,
+            "exactly_2_digits": trailing_2,
+            "exactly_3_digits": trailing_3,
+        },
+        "last_digit_histogram": dict(sorted(last_digit_hist.items())),
+        "first_upper_last_digit": first_upper_last_digit,
+        "first_upper_last_special": first_upper_last_special,
     }
 
 
@@ -267,6 +377,56 @@ def extract_base_words(
     return sorted(bases)
 
 
+def extract_base_words_ranked(
+    filepath: str,
+    min_len: int = 4,
+    top_n: int = 50,
+) -> list[tuple[str, int]]:
+    """Extract base words with frequency ranking (pipal parity).
+
+    Returns list of (base_word, count) tuples sorted by frequency.
+    """
+    path = Path(filepath)
+    if not path.exists():
+        raise FileNotFoundError(f"Wordlist not found: {filepath}")
+
+    counter: Counter = Counter()
+    with path.open(encoding="utf-8", errors="replace") as f:
+        for line in f:
+            entry = line.rstrip("\n\r")
+            if not entry:
+                continue
+            base = _TRAILING_JUNK_RE.sub("", entry)
+            base = _LEADING_JUNK_RE.sub("", base).lower()
+            if len(base) >= min_len:
+                counter[base] += 1
+
+    return counter.most_common(top_n)
+
+
+def analyze_char_position_frequency(
+    filepath: str,
+    max_positions: int = 16,
+) -> dict[int, dict[str, int]]:
+    """Analyze character frequency by position (pipal Frequency_Checker parity).
+
+    Returns dict mapping position → {char: count}.
+    """
+    path = Path(filepath)
+    if not path.exists():
+        raise FileNotFoundError(f"Wordlist not found: {filepath}")
+
+    pos_freq: dict[int, Counter] = {i: Counter() for i in range(max_positions)}
+
+    with path.open(encoding="utf-8", errors="replace") as f:
+        for line in f:
+            entry = line.rstrip("\n\r")
+            for i, ch in enumerate(entry[:max_positions]):
+                pos_freq[i][ch] += 1
+
+    return {pos: dict(cnt.most_common(20)) for pos, cnt in pos_freq.items() if cnt}
+
+
 def export_stats_json(metrics: dict, filepath: str, mask_data: Optional[dict] = None) -> str:
     """
     Exporta métricas de análise em formato JSON.
@@ -290,9 +450,16 @@ def export_stats_json(metrics: dict, filepath: str, mask_data: Optional[dict] = 
             "avg_length": metrics["avg_length"],
         },
         "char_types": metrics["char_types"],
+        "char_composition": metrics.get("char_composition", {}),
+        "char_ordering": metrics.get("char_ordering", {}),
         "number_positions": metrics["number_positions"],
         "special_positions": metrics["special_positions"],
+        "trailing_digits": metrics.get("trailing_digits", {}),
+        "last_digit_histogram": metrics.get("last_digit_histogram", {}),
+        "first_upper_last_digit": metrics.get("first_upper_last_digit", 0),
+        "first_upper_last_special": metrics.get("first_upper_last_special", 0),
         "length_distribution": metrics["length_distribution"],
+        "length_buckets": metrics.get("length_buckets", {}),
         "top_passwords": [
             {"entry": e, "count": c} for e, c in metrics["top_passwords"]
         ],
