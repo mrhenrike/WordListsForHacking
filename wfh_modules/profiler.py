@@ -2,20 +2,15 @@
 profiler.py — Interactive personal target profiling for wordlist generation.
 
 Each variation is emitted as a separate line (one entry per line).
-Generates: case variants, leet variants, token combinations, date variations,
+Generates: case variants, leet variants, reversed strings, name initials/fragments,
+token combinations (up to depth 5), date fragment tokens, old password mutations,
 social handles, location patterns, corporate keywords, religious patterns,
-behavioral patterns loaded from data/behavior_patterns.json, and
-multi-token (2+3) permutation combinations.
+behavioral patterns from data/behavior_patterns.json, and multi-char special suffixes.
 
-Supports loading profiles from YAML files for non-interactive/automated use.
-
-Usage:
-  wfh.py profile                              # full interactive wizard
-  wfh.py profile --name "John" --nick "johnny" --birth 1990
-  wfh.py profile --profile-file target.yaml  # load from YAML file
+Inspired by CUPP, elpscrk, and BEWGor — absorbs their best mutation strategies.
 
 Author: André Henrique (@mrhenrike)
-Version: 2.2.0
+Version: 2.3.0
 """
 from __future__ import annotations
 
@@ -447,6 +442,87 @@ def _social_handle_variants(handle: str) -> list[str]:
     return list(dict.fromkeys([clean, f"@{clean}"]))
 
 
+# ── CUPP/elpscrk/BEWGor enhancements ─────────────────────────────────────────
+
+def _reversed_tokens(tokens: list[str]) -> list[str]:
+    """Generate reversed versions of all tokens (CUPP/elpscrk/BEWGor parity)."""
+    reversed_list: list[str] = []
+    for tok in tokens:
+        rev = tok[::-1]
+        if rev != tok and len(rev) >= 3:
+            reversed_list.append(rev)
+    return reversed_list
+
+
+def _name_initials(full_name: str) -> list[str]:
+    """Extract name fragments: initials, first letter, first 2 letters (BEWGor/elpscrk parity)."""
+    parts = _split_words(full_name)
+    if not parts:
+        return []
+
+    fragments: list[str] = []
+    initials = "".join(p[0] for p in parts if p).upper()
+    if len(initials) >= 2:
+        fragments.append(initials)
+        fragments.append(initials.lower())
+
+    for part in parts:
+        clean = normalize(part)
+        if not clean:
+            continue
+        fragments.append(clean[0].lower())
+        fragments.append(clean[0].upper())
+        if len(clean) >= 2:
+            fragments.append(clean[:2].lower())
+            fragments.append(clean[:2].upper())
+            fragments.append(clean[:2].capitalize())
+
+    return list(dict.fromkeys(fragments))
+
+
+def _extra_date_fragments(day: int, month: int, year: int) -> list[str]:
+    """Generate granular date fragments (CUPP-style: isolated day, month, year digits)."""
+    frags: list[str] = []
+    if day:
+        frags.append(str(day))
+        frags.append(str(day).zfill(2))
+        if day >= 10:
+            frags.append(str(day % 10))
+    if month:
+        frags.append(str(month))
+        frags.append(str(month).zfill(2))
+        if month >= 10:
+            frags.append(str(month % 10))
+    if year:
+        ys = str(year)
+        frags.append(ys)
+        frags.append(ys[-2:])
+        if len(ys) >= 3:
+            frags.append(ys[-3:])
+    return list(dict.fromkeys(frags))
+
+
+def _phone_fragments(phone: str) -> list[str]:
+    """Decompose phone into fragments: last 4, first 4, national format (elpscrk parity)."""
+    digits = re.sub(r"\D", "", phone)
+    frags: list[str] = []
+    if len(digits) >= 4:
+        frags.append(digits[-4:])
+        frags.append(digits[:4])
+    if len(digits) >= 7:
+        frags.append(digits[-7:])
+    if digits.startswith("55") and len(digits) > 4:
+        frags.append("0" + digits[2:])
+    return list(dict.fromkeys(f for f in frags if f))
+
+
+MULTI_CHAR_SPECIALS = [
+    "!!", "!@", "!#", "@!", "@#", "#!", "#@",
+    "123", "1!", "!1", "12", "01", "!@#", "@!#",
+    "$$", "**", "##", "!", "@", "#", "$", "*",
+]
+
+
 # ── Main generator ────────────────────────────────────────────────────────────
 
 def _emit_all(
@@ -457,11 +533,9 @@ def _emit_all(
     max_len: int,
     with_spaces: bool,
     seen: set[str],
+    depth: int = 3,
 ) -> Generator[str, None, None]:
-    """
-    Yield all combinations of tokens, dates, separators.
-
-    Yields each unique, length-filtered entry exactly once.
+    """Yield all combinations of tokens, dates, separators.
 
     Args:
         tokens: Base word tokens.
@@ -471,9 +545,7 @@ def _emit_all(
         max_len: Maximum entry length.
         with_spaces: Include space as a separator option.
         seen: Mutable set of already-emitted entries.
-
-    Yields:
-        Individual wordlist entries (one per line).
+        depth: Max permutation depth (3=default, 4=enhanced, 5=max BEWGor).
     """
     seps = list(separators)
     if with_spaces and " " not in seps:
@@ -520,15 +592,29 @@ def _emit_all(
     limit3 = min(len(tokens), 8)
     token3_subset = tokens[:limit3]
     for t1, t2, t3 in _permutations(token3_subset, 3):
-        # Only use empty separator for 3-token to keep entries from exploding
         r = _try_emit(t1 + t2 + t3)
         if r:
             yield r
-        # With one selected separator (first non-empty)
         non_empty_seps = [s for s in seps if s]
         if non_empty_seps:
             sep = non_empty_seps[0]
             r = _try_emit(t1 + sep + t2 + sep + t3)
+            if r:
+                yield r
+
+    # 4-token combinations (depth 4, BEWGor parity) — first 6 tokens
+    if depth >= 4:
+        limit4 = min(len(tokens), 6)
+        for t1, t2, t3, t4 in _permutations(tokens[:limit4], 4):
+            r = _try_emit(t1 + t2 + t3 + t4)
+            if r:
+                yield r
+
+    # 5-token combinations (depth 5, BEWGor max parity) — first 5 tokens
+    if depth >= 5:
+        limit5 = min(len(tokens), 5)
+        for combo in _permutations(tokens[:limit5], 5):
+            r = _try_emit("".join(combo))
             if r:
                 yield r
 
@@ -538,6 +624,27 @@ def _emit_all(
             continue
         for tok in tokens[:10]:
             r = _try_emit(pref + tok)
+            if r:
+                yield r
+
+    # Reversed tokens (CUPP/elpscrk/BEWGor parity)
+    rev_tokens = _reversed_tokens(tokens[:15])
+    for rev in rev_tokens:
+        r = _try_emit(rev)
+        if r:
+            yield r
+        for dt in date_tokens[:10]:
+            r = _try_emit(rev + dt)
+            if r:
+                yield r
+            r = _try_emit(dt + rev)
+            if r:
+                yield r
+
+    # Multi-char special suffixes (CUPP parity)
+    for tok in tokens[:12]:
+        for spec in MULTI_CHAR_SPECIALS:
+            r = _try_emit(tok + spec)
             if r:
                 yield r
 
@@ -977,11 +1084,24 @@ def generate_from_profile(
             if dt not in all_date_tokens:
                 all_date_tokens.append(dt)
 
+    depth = profile.get("depth", 3) or 3
+
     # ── Collect tokens ────────────────────────────────────────
 
     # Full name words
     add_words(profile.get("full_name", ""))
     add_words(profile.get("short_name", ""))
+
+    # Name initials and fragments (BEWGor/elpscrk parity)
+    for name_field in ("full_name", "short_name"):
+        for frag in _name_initials(profile.get(name_field, "")):
+            if frag and frag not in word_tokens:
+                word_tokens.append(frag)
+
+    # Surname as separate field (CUPP parity)
+    surname = profile.get("surname", "")
+    if surname:
+        add_words(surname)
 
     # Nicknames
     for nick in profile.get("nicknames", []):
@@ -1008,11 +1128,22 @@ def generate_from_profile(
             if v and v not in word_tokens:
                 word_tokens.append(v)
 
-    # Phones
+    # Old passwords (elpscrk parity)
+    for oldpwd in profile.get("old_passwords", []):
+        if oldpwd and oldpwd not in word_tokens:
+            word_tokens.append(oldpwd)
+        rev = oldpwd[::-1]
+        if rev and rev != oldpwd and rev not in word_tokens:
+            word_tokens.append(rev)
+
+    # Phones + fragments (elpscrk parity)
     for phone in profile.get("phones", []):
         for pv in _clean_phone(phone):
             if pv not in word_tokens:
                 word_tokens.append(pv)
+        for frag in _phone_fragments(phone):
+            if frag not in word_tokens:
+                word_tokens.append(frag)
 
     # Location
     add_words(profile.get("location_city", ""))
@@ -1103,6 +1234,29 @@ def generate_from_profile(
             if st not in all_date_tokens:
                 all_date_tokens.append(st)
 
+    # Extra date fragments (CUPP-style granular: isolated day, month, year digits)
+    for date_src in [
+        (day, month, year),
+        (profile.get("partner_birth_day", 0) or 0,
+         profile.get("partner_birth_month", 0) or 0,
+         profile.get("partner_birth_year", 0) or 0),
+    ]:
+        for frag in _extra_date_fragments(*date_src):
+            if frag not in all_date_tokens:
+                all_date_tokens.append(frag)
+
+    # Parents and siblings (BEWGor parity)
+    for parent in profile.get("parents", []):
+        if isinstance(parent, dict):
+            add_words(parent.get("name", ""))
+        elif isinstance(parent, str):
+            add_words(parent)
+    for sibling in profile.get("siblings", []):
+        if isinstance(sibling, dict):
+            add_words(sibling.get("name", ""))
+        elif isinstance(sibling, str):
+            add_words(sibling)
+
     # Special characters override
     seps = list(WORD_SEPARATORS)
     if include_specials:
@@ -1112,7 +1266,7 @@ def generate_from_profile(
     yield from _emit_all(
         word_tokens, all_date_tokens,
         seps, effective_min, effective_max,
-        with_spaces, seen,
+        with_spaces, seen, depth=depth,
     )
 
     # ── Behavioral/religious patterns from JSON DB ────────────

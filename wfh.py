@@ -83,7 +83,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "2.2.0"
+VERSION = "2.3.0"
 
 # ── Graceful shutdown ──────────────────────────────────────────────────────────
 _SHUTDOWN_REQUESTED = False
@@ -446,10 +446,21 @@ def cmd_profile(args: argparse.Namespace) -> None:
             parts = args.suffix_range.split("-")
             profile["suffix_range_start"] = int(parts[0])
             profile["suffix_range_end"] = int(parts[1])
-            # Auto-detect zero-pad from format (e.g. "00-99" → pad 2)
             profile["suffix_range_zero_pad"] = len(parts[0]) if parts[0].startswith("0") else 0
         except (ValueError, IndexError):
             _warn(f"Invalid --suffix-range format '{args.suffix_range}', expected START-END (e.g. 00-99)")
+
+    # Inject CUPP/elpscrk/BEWGor fields from CLI
+    if getattr(args, "surname", None):
+        profile["surname"] = args.surname
+    if getattr(args, "old_passwords", None):
+        profile["old_passwords"] = args.old_passwords
+    if getattr(args, "depth", None):
+        profile["depth"] = args.depth
+    if getattr(args, "parents", None):
+        profile["parents"] = args.parents
+    if getattr(args, "siblings", None):
+        profile["siblings"] = args.siblings
 
     leet_mode = getattr(args, "leet", "basic") or profile.get("leet_mode", "basic")
     _info(f"Generating wordlist from profile [leet={leet_mode}]...")
@@ -651,9 +662,43 @@ def cmd_phone(args: argparse.Namespace) -> None:
             "output_formats": [f.strip() for f in formats_raw.split(",")],
         }
 
+    suffix = getattr(args, "suffix", None) or ""
+    prefix_file = getattr(args, "prefix_file", None)
+    digit_length = getattr(args, "digit_length", None)
+
+    if prefix_file:
+        from wfh_modules.dns_wordlist import load_words_from_file
+        prefixes = load_words_from_file(prefix_file)
+        _info(f"Loaded {len(prefixes)} prefixes from {prefix_file}")
+        pattern = "X" * (digit_length or 7)
+
+        def _multi_prefix_gen():
+            for px in prefixes:
+                px = px.strip().lstrip("#")
+                if not px:
+                    continue
+                for num in generate_phones(
+                    ddi="", ddd="",
+                    custom_pattern=pattern,
+                    output_formats=["bare"],
+                ):
+                    entry = px + num + suffix
+                    yield entry
+
+        count = _write_output(_multi_prefix_gen(), args.output)
+        _ok(f"Generated: {count:,} phone entries (multi-prefix)")
+        return
+
+    if digit_length:
+        params["custom_pattern"] = "X" * digit_length
+
     _info(f"Generating phone numbers [country={params.get('country') or 'custom'}]...")
-    gen = generate_phones(**params)
-    count = _write_output(gen, args.output)
+
+    def _gen_with_suffix():
+        for num in generate_phones(**params):
+            yield num + suffix if suffix else num
+
+    count = _write_output(_gen_with_suffix(), args.output)
     _ok(f"Generated: {count:,} phone entries")
 
 
@@ -959,77 +1004,133 @@ def cmd_merge(args: argparse.Namespace) -> None:
 
 
 def cmd_dns(args: argparse.Namespace) -> None:
-    """Handler for DNS wordlist generation."""
+    """Handler for DNS wordlist generation (alterx + DNSCewl parity)."""
     from wfh_modules.dns_wordlist import (
         generate_subdomain_permutations, generate_from_template, load_words_from_file,
         load_templates_from_yaml, generate_from_yaml_templates,
-        generate_multi_domain, filter_dns_output,
+        generate_multi_domain, filter_dns_output, clusterbomb_generate,
+        parse_fqdn, enrich_payloads, dnscewl_mutations, estimate_output,
+        PAYLOAD_WORD, PAYLOAD_NUMBER, PAYLOAD_REGION, DEFAULT_PATTERNS,
     )
+    from itertools import chain
 
     match_regex = getattr(args, "match_regex", None)
     filter_regex = getattr(args, "filter_regex", None)
     separator = getattr(args, "separator", None)
     separators = [separator] if separator else None
 
-    # ── Multi-domain mode ──────────────────────────────────────
-    domain_list = getattr(args, "domain_list", None)
-    if domain_list:
-        words: list[str] = []
-        if getattr(args, "wordlist", None):
-            words = load_words_from_file(args.wordlist)
-        if getattr(args, "words", None):
-            words.extend(args.words)
-        gen = generate_multi_domain(
-            domain_list, words, separators,
-            use_prefixes=not getattr(args, "no_prefixes", False),
-            use_suffixes=not getattr(args, "no_suffixes", False),
-            match_regex=match_regex,
-            filter_regex=filter_regex,
-        )
-        count = _write_output(gen, args.output)
-        _ok(f"Generated: {count:,} DNS entries")
-        return
-
-    words = []
+    words: list[str] = []
     if getattr(args, "wordlist", None):
         words = load_words_from_file(args.wordlist)
     if getattr(args, "words", None):
         words.extend(args.words)
 
-    if not words:
-        _err("Provide words with --wordlist or --words")
-        return
+    custom_payloads: dict[str, list[str]] = {}
+    for pp in (getattr(args, "payloads", None) or []):
+        if "=" in pp:
+            key, fpath = pp.split("=", 1)
+            custom_payloads[key.strip()] = load_words_from_file(fpath.strip())
 
-    # ── YAML template file ─────────────────────────────────────
-    template_file = getattr(args, "template_file", None)
-    if template_file:
-        try:
-            templates = load_templates_from_yaml(template_file)
-        except (FileNotFoundError, ImportError) as exc:
-            _err(str(exc))
-            return
-        gen = generate_from_yaml_templates(
-            templates, words, args.domain,
-            match_regex=match_regex,
-            filter_regex=filter_regex,
+    # ── Multi-domain mode ──────────────────────────────────────
+    domain_list = getattr(args, "domain_list", None)
+    if domain_list and not getattr(args, "clusterbomb", False):
+        gen = generate_multi_domain(
+            domain_list, words or PAYLOAD_WORD, separators,
+            use_prefixes=not getattr(args, "no_prefixes", False),
+            use_suffixes=not getattr(args, "no_suffixes", False),
+            match_regex=match_regex, filter_regex=filter_regex,
         )
         count = _write_output(gen, args.output)
         _ok(f"Generated: {count:,} DNS entries")
         return
 
+    # ── ClusterBomb mode (alterx-style) ────────────────────────
+    if getattr(args, "clusterbomb", False) or getattr(args, "template_file", None):
+        payloads = {
+            "word": words if words else PAYLOAD_WORD,
+            "number": PAYLOAD_NUMBER,
+            "region": PAYLOAD_REGION,
+        }
+        payloads.update(custom_payloads)
+
+        patterns = DEFAULT_PATTERNS
+        extra_yaml_payloads: dict = {}
+
+        template_file = getattr(args, "template_file", None)
+        if template_file:
+            try:
+                yaml_templates, yaml_payloads = load_templates_from_yaml(template_file)
+                if yaml_templates:
+                    patterns = yaml_templates
+                if yaml_payloads:
+                    extra_yaml_payloads = yaml_payloads
+                    payloads.update(yaml_payloads)
+            except (FileNotFoundError, ImportError) as exc:
+                _err(str(exc))
+                return
+
+        input_fqdns = []
+        if args.domain:
+            input_fqdns = [args.domain]
+        elif domain_list:
+            input_fqdns = load_words_from_file(domain_list)
+
+        if getattr(args, "enrich", False) and input_fqdns:
+            payloads["word"], payloads["number"] = enrich_payloads(
+                input_fqdns, payloads["word"], payloads["number"],
+            )
+            _info(f"Enriched: {len(payloads['word'])} words, {len(payloads['number'])} numbers")
+
+        if getattr(args, "estimate", False):
+            est = estimate_output(patterns, payloads, len(input_fqdns) or 1)
+            _ok(f"Estimated output: {est:,} lines")
+            return
+
+        generators = []
+        for fqdn in (input_fqdns or [""]):
+            input_vars = parse_fqdn(fqdn) if fqdn else {}
+            generators.append(clusterbomb_generate(
+                patterns, payloads, input_vars,
+                match_regex=match_regex, filter_regex=filter_regex,
+            ))
+
+        if getattr(args, "dnscewl", False) and input_fqdns:
+            for fqdn in input_fqdns:
+                generators.append(dnscewl_mutations(
+                    payloads["word"][:50], fqdn,
+                    numeric_range=getattr(args, "numeric_range", 10),
+                    extension_swap=getattr(args, "extension_swap", None),
+                ))
+
+        count = _write_output(chain(*generators), args.output)
+        _ok(f"Generated: {count:,} DNS entries (ClusterBomb)")
+        return
+
+    if not words:
+        words = PAYLOAD_WORD[:30]
+        _info(f"No words provided — using {len(words)} built-in payloads")
+
+    generators = []
+
     if args.template:
         gen = generate_from_template(args.template, words, args.domain)
-        gen = filter_dns_output(gen, match_regex, filter_regex)
+        generators.append(filter_dns_output(gen, match_regex, filter_regex))
     else:
-        gen = generate_subdomain_permutations(
+        generators.append(generate_subdomain_permutations(
             words, args.domain, separators,
             use_prefixes=not args.no_prefixes,
             use_suffixes=not args.no_suffixes,
-            match_regex=match_regex,
-            filter_regex=filter_regex,
-        )
+            match_regex=match_regex, filter_regex=filter_regex,
+        ))
 
-    count = _write_output(gen, args.output)
+    if getattr(args, "dnscewl", False):
+        generators.append(dnscewl_mutations(
+            words[:50], args.domain,
+            numeric_range=getattr(args, "numeric_range", 10),
+            extension_swap=getattr(args, "extension_swap", None),
+        ))
+
+    count = _write_output(chain(*generators), args.output)
     _ok(f"Generated: {count:,} subdomains")
 
 
@@ -1114,6 +1215,15 @@ def cmd_isp_keygen(args: argparse.Namespace) -> None:
     """Handler for ISP default WiFi password keyspace generation."""
     from wfh_modules.isp_keygen import handle_isp_keygen
     handle_isp_keygen(args, {})
+
+
+def cmd_combiner(args: argparse.Namespace) -> None:
+    """Handler for keyword combiner wordlist generation."""
+    from wfh_modules.combiner import handle_combiner
+    gen = handle_combiner(args, {})
+    if gen:
+        count = _write_output(gen, args.output)
+        _ok(f"Generated: {count:,} combined entries")
 
 
 def cmd_mangle(args: argparse.Namespace) -> None:
@@ -1487,6 +1597,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_pr.add_argument("--leet", default="basic",
                        choices=["basic", "medium", "aggressive", "none"],
                        help="Leet speak mode")
+    p_pr.add_argument("--surname", help="Surname (separate from first name, CUPP parity)")
+    p_pr.add_argument("--old-passwords", dest="old_passwords", nargs="+", metavar="PWD",
+                       help="Known old passwords to mutate (elpscrk parity)")
+    p_pr.add_argument("--depth", type=int, default=3, choices=[3, 4, 5],
+                       help="Permutation depth: 3 (default), 4 (enhanced), 5 (max BEWGor)")
+    p_pr.add_argument("--parents", nargs="+", metavar="NAME",
+                       help="Parent names (BEWGor parity)")
+    p_pr.add_argument("--siblings", nargs="+", metavar="NAME",
+                       help="Sibling names (BEWGor parity)")
     p_pr.add_argument("-o", "--output", help="Output file")
 
     # ── corp ──────────────────────────────────────────────────────────────
@@ -1579,6 +1698,12 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Custom digit pattern (X=any digit, e.g. '9XXXX-XXXX')")
     p_ph2.add_argument("--formats", dest="formats", default="e164,local",
                         help="Output formats: e164,local,bare (comma-sep, default: e164,local)")
+    p_ph2.add_argument("--suffix", dest="suffix",
+                        help="Append suffix to each generated number (pnwgen parity)")
+    p_ph2.add_argument("--prefix-file", dest="prefix_file", metavar="FILE",
+                        help="File with one prefix per line (pnwgen multi-prefix mode)")
+    p_ph2.add_argument("--digit-length", dest="digit_length", type=int, metavar="N",
+                        help="Override digit count for brute-force (4-10, pnwgen parity)")
     p_ph2.add_argument("-o", "--output", help="Output file")
 
     # ── scrape ────────────────────────────────────────────────────────────
@@ -1675,6 +1800,12 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Extract base words (strip trailing digits/specials)")
     p_an.add_argument("--base-output", dest="base_output", metavar="FILE",
                        help="Save base words to file")
+    p_an.add_argument("--base-ranked", dest="base_ranked", action="store_true",
+                       help="Show base words with frequency ranking (pipal parity)")
+    p_an.add_argument("--position-freq", dest="position_freq", action="store_true",
+                       help="Show character frequency by position (pipal Frequency_Checker)")
+    p_an.add_argument("--all-masks", dest="all_masks", action="store_true",
+                       help="Show ALL masks (not just top N)")
     p_an.add_argument("--format", dest="format", choices=["text", "json", "csv", "markdown"],
                        default="text", help="Output format: text, json, csv, markdown (default: text)")
     p_an.add_argument("-o", "--output", help="Save report to file")
@@ -1693,7 +1824,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_mg.add_argument("-o", "--output", help="Output file")
 
     # ── dns ───────────────────────────────────────────────────────────────
-    p_dn = sub.add_parser("dns", help="DNS/subdomain fuzzing wordlist")
+    p_dn = sub.add_parser("dns", help="DNS/subdomain fuzzing (alterx + DNSCewl style)")
     p_dn.add_argument("-d", "--domain", default="", help="Target domain (required unless --domain-list)")
     p_dn.add_argument("--domain-list", dest="domain_list", metavar="FILE",
                        help="File with one domain per line (multi-domain mode)")
@@ -1701,7 +1832,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_dn.add_argument("--words", nargs="+", help="Direct word list")
     p_dn.add_argument("-t", "--template", help="Inline template (e.g. dev-{word}.{domain})")
     p_dn.add_argument("--template-file", dest="template_file", metavar="FILE",
-                       help="YAML file with permutation templates")
+                       help="YAML file with permutation templates (alterx-compatible)")
     p_dn.add_argument("--separator", help="Custom separator between tokens (e.g. _ or .)")
     p_dn.add_argument("--match-regex", dest="match_regex", metavar="REGEX",
                        help="Include only output matching this regex")
@@ -1709,6 +1840,20 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Exclude output matching this regex")
     p_dn.add_argument("--no-prefixes", action="store_true", dest="no_prefixes")
     p_dn.add_argument("--no-suffixes", action="store_true", dest="no_suffixes")
+    p_dn.add_argument("--enrich", action="store_true",
+                       help="Extract tokens from input FQDNs to enrich payloads (alterx -enrich)")
+    p_dn.add_argument("--clusterbomb", action="store_true",
+                       help="Use ClusterBomb mode with built-in alterx patterns and payloads")
+    p_dn.add_argument("--payload", dest="payloads", action="append", metavar="KEY=FILE",
+                       help="Custom payload file (key=file, can repeat). Keys: word, number, region")
+    p_dn.add_argument("--dnscewl", action="store_true",
+                       help="Add DNSCewl-style mutations (append/prepend/numeric-range)")
+    p_dn.add_argument("--numeric-range", dest="numeric_range", type=int, default=10,
+                       help="Numeric range for DNSCewl mutations (default: 10)")
+    p_dn.add_argument("--extension-swap", dest="extension_swap", nargs="+", metavar="TLD",
+                       help="Swap TLD extensions (e.g. com.au co.uk org)")
+    p_dn.add_argument("--estimate", action="store_true",
+                       help="Estimate output size without generating")
     p_dn.add_argument("-o", "--output", help="Output file")
 
     # ── pharma ────────────────────────────────────────────────────────────
@@ -2028,6 +2173,43 @@ def build_parser() -> argparse.ArgumentParser:
         "-o", "--output", metavar="FILE",
         help="Output model file (default: .model/pattern_model.json)",
     )
+
+    # ── combiner ──────────────────────────────────────────────────────────
+    p_cb = sub.add_parser(
+        "combiner",
+        help="Keyword combiner (intelligence-wordlist-generator style)",
+        description=(
+            "Generate wordlists from keyword permutations with connectors.\n\n"
+            "Examples:\n"
+            "  wfh.py combiner admin password secret\n"
+            "  wfh.py combiner admin test --connectors ',-,_,.,EMPTY' --leet --reverse\n"
+            "  wfh.py combiner --keywords-file keywords.txt --depth 3 --abbreviation\n"
+            "  wfh.py combiner acme corp 2026 --tails '!,@,#,123' -o wordlist.lst"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_cb.add_argument("keywords", nargs="*", help="Keywords to combine")
+    p_cb.add_argument("--keywords-file", dest="keywords_file", metavar="FILE",
+                       help="File with one keyword per line")
+    p_cb.add_argument("--connectors", metavar="LIST",
+                       help="Comma-separated connectors (use EMPTY for no separator, default: EMPTY,-,_,.,@,#)")
+    p_cb.add_argument("--tails", metavar="LIST",
+                       help="Comma-separated numeric/special tails to append")
+    p_cb.add_argument("--depth", type=int, default=0,
+                       help="Max permutation depth (0 = all, default: 0)")
+    p_cb.add_argument("--abbreviation", action="store_true",
+                       help="Generate abbreviation variants")
+    p_cb.add_argument("--reverse", action="store_true",
+                       help="Generate reversed variants")
+    p_cb.add_argument("--leet", action="store_true",
+                       help="Generate leet speak variants")
+    p_cb.add_argument("--lowercase", action="store_true",
+                       help="Add lowercase duplicates")
+    p_cb.add_argument("--min-len", dest="min_len", type=int, default=1,
+                       help="Minimum output length (default: 1)")
+    p_cb.add_argument("--max-len", dest="max_len", type=int, default=64,
+                       help="Maximum output length (default: 64)")
+    p_cb.add_argument("-o", "--output", help="Output file")
 
     return parser
 
@@ -2369,6 +2551,7 @@ def main() -> None:
         "mangle":        cmd_mangle,
         "default-creds": cmd_default_creds,
         "isp-keygen":    cmd_isp_keygen,
+        "combiner":      cmd_combiner,
     }
 
     handler = handlers.get(args.command)
