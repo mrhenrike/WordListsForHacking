@@ -3002,3 +3002,93 @@ admin:wago
 mosquitto:
 admin:hivemq
 user1:password
+"0:0 (role 0)
+"Administrator 1:Admin1
+"Administrator:admin
+"Direct level:<blank>
+"FTP:sysdiag:factorycast@schneider
+"GE:GE (Telnet
+"Guest:guest
+"HTTP admin:admin
+"HTTP:blank:ZYPCOM
+"Level 1:1024
+"Level 6 End users:1000 (Physical)
+"Liebert:Liebert
+"NETLink PRO PoE:admin"
+"PVRemote:PD35010 (from a remote PC via a telephone connection)"
+"Root:00000000
+"SNMP community string:wdpfRO"
+"SQL Server Login:aadbo:pwddbo
+"To read data 1111:1111
+"User 01:100
+"admin:<blank>
+"admin:admin
+"admin:avocent
+"admin:bintec
+"admin:default
+"admin:funkwerk
+"admin:private
+"admin:wago
+"admin@root:charleM!800"
+"ecoV:ecopass
+"for ftp and lns servers:ilon:ilon"
+"for http:ETHERNET
+"for the Windows log in Administrator:navigator
+"guest:guest
+"ntpupdate:ntpupdate (Using an FTP client
+"pcfactory:pcfactory
+"root:deif7800 (administrator)
+"root:froot
+"root:wago
+"root:zP2wxY4uE"
+"telnet root:root
+"tracerlab:tracerlab (for remote access)
+"user password:0000
+"user:12345
+"user:public
+"winccd:winccpass
+Admin:AdminAdmin
+Admin:blank
+Administrator:Password
+Administrator:Wonderware
+Advanced:advanced
+ArgusAdmin:masterkey
+DMS Connection:0000 or 1234
+Echelon:echeloncorp
+Hardcoded password:Basisk:Basisk
+Installer:sma
+LOI:1000
+MELSEC:MELSEC
+MyTurbine:m442+SRt
+QNUDECPU:QNUDECPU
+Service Tools:SERVICETOOL
+USHA:admin
+admin:<blank>
+admin:<none>
+admin:FacilityExpl0rer
+admin:PASS
+admin:blank
+admin:loytec4u
+admin:westermo
+administrator:administrator (role KVAdministrator)
+administrator:blank
+administrator:superuser
+anonymous:blank (Ethernet access)
+argus:argus
+def:trade
+default:1234
+distech:controls
+eignet:inp100
+honeywell:webs
+jci:explorer
+naztec:naztec
+pvserver:pvwr
+root:840sw
+root:dbps
+root:deif7800
+root:rkwjsdusrnth
+sconsole:12345
+superview:superview
+tridium:niagara
+viewer:12345
+webguest:1
