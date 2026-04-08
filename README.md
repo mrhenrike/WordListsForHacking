@@ -3,12 +3,12 @@
 <p align="center">
   <img src="https://img.shields.io/github/stars/mrhenrike/WordListsForHacking?style=flat-square" alt="GitHub Stars">
   <img src="https://img.shields.io/github/license/mrhenrike/WordListsForHacking?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/version-2.3.0-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.4.0-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/python-3.8%2B-blue?style=flat-square&logo=python&logoColor=white" alt="Python 3.8+">
   <img src="https://img.shields.io/pypi/v/wfh-wordlist?style=flat-square&logo=pypi&logoColor=white&color=green" alt="PyPI">
 </p>
 
-**Unified wordlist generation toolkit for pentest and red team operations.** Combines charset generation, target profiling, web scraping (with JS/CSS/PDF extraction), OCR extraction, leet speak, DNS fuzzing, phone number generation, corporate user enumeration, default credential databases, ISP keyspace generation, ML-based ranking with SecLists corpus training, and statistical analysis — all in a single CLI tool.
+**Unified wordlist generation toolkit for pentest and red team operations — 25 subcommands in a single CLI.** Charset/mask generation, personal & corporate target profiling, web scraping (JS/CSS/PDF extraction), OCR, document parsing (PDF/XLSX/DOCX), leet speak permutations, XOR crypto, DNS/subdomain fuzzing, phone number generation, corporate user enumeration, healthcare/pharma patterns, default credential databases (IoT/ICS/SCADA/PLC/HMI), ISP WiFi keyspace generation, password-DNA behavioral analysis, keyword combiner, word mangling, merge & sanitize, ML-based ranking with SecLists corpus training, and statistical analysis.
 
 > **Full documentation:** [Wiki](https://github.com/mrhenrike/WordListsForHacking/wiki)
 
@@ -172,6 +172,46 @@ python wfh.py sanitize merged.lst --inplace
 
 ---
 
+## Password DNA
+
+Analyze password patterns and generate behavioral variants. The `password-dna` subcommand extracts structural "DNA" from known passwords (uppercase, lowercase, digit, symbol positions) and produces new candidates that follow the same behavioral patterns.
+
+```bash
+# Analyze a leaked/known password list and generate variants
+python wfh.py password-dna --input known_passwords.lst --depth 2 -o dna_variants.lst
+
+# Generate variants from a single seed with aggressive expansion
+python wfh.py password-dna --seed "Company2024!" --depth 3 --leet -o seed_variants.lst
+
+# DNA analysis report only (no generation)
+python wfh.py password-dna --input known_passwords.lst --analyze-only --format json -o dna_report.json
+```
+
+---
+
+## Default Credentials Database
+
+Query the built-in database of 1,329+ factory-default credentials covering 88 vendors and 14 protocols — routers, switches, printers, IP cameras, ICS/SCADA (PLCs, HMIs, RTUs), IoT gateways, and more.
+
+```bash
+# List all supported vendors
+python wfh.py default-creds --list-vendors
+
+# Export credentials for a specific vendor
+python wfh.py default-creds --vendor siemens --format combo -o siemens_creds.lst
+
+# Filter by protocol (telnet, ssh, http, snmp, modbus, s7comm, etc.)
+python wfh.py default-creds --protocol modbus --format user -o modbus_users.lst
+
+# Search by device category
+python wfh.py default-creds --category ics --format combo -o ics_defaults.lst
+
+# Export full database as JSON
+python wfh.py default-creds --export-all --format json -o all_defaults.json
+```
+
+---
+
 ## Wordlists
 
 | File | Description | Entries |
@@ -235,6 +275,8 @@ The model stores **only structural patterns** — no PII, passwords, or company 
 | [elpscrk](https://github.com/D4Vinci/elpscrk) | Permutation-based generation |
 | [BEWGor](https://github.com/berzerk0/BEWGor) | Biographical wordlist generator |
 | [pnwgen](https://github.com/toxydose/pnwgen) | Phone number generation |
+| [intelligence-wordlist-generator](https://github.com/MichaelDim02/intelligence-wordlist-generator) | Keyword combiner |
+| [SCaDAPass](https://github.com/scadastrangelove/SCaDAPass) | ICS/SCADA default credentials |
 
 ---
 
