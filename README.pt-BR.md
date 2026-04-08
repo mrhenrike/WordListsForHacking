@@ -12,7 +12,7 @@
 <h1 align="center">WordListsForHacking</h1>
 
 <p align="center">
-  <a href="https://github.com/mrhenrike/WordListsForHacking/releases"><img src="https://img.shields.io/badge/version-2.2.0-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/mrhenrike/WordListsForHacking/releases"><img src="https://img.shields.io/badge/version-2.3.0-blue?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.8%2B-yellow?style=flat-square" alt="Python"></a>
   <a href="https://github.com/mrhenrike/WordListsForHacking"><img src="https://img.shields.io/badge/platform-linux%20%7C%20windows%20%7C%20macos%20%7C%20termux-lightgrey?style=flat-square" alt="Platform"></a>
@@ -30,7 +30,7 @@
 ---
 
 > **Autor:** André Henrique ([@mrhenrike](https://github.com/mrhenrike))
-> **Versão:** 2.2.0 · **Licença:** MIT · **Python:** 3.8+
+> **Versão:** 2.3.0 · **Licença:** MIT · **Python:** 3.8+
 
 > **Documentação completa:** [Wiki](https://github.com/mrhenrike/WordListsForHacking/wiki)
 
@@ -103,6 +103,7 @@ python wfh.py --help       # ajuda completa da CLI
 | 21 | `mangle` | Regras de word mangling |
 | 22 | `default-creds` | Consulta base de credenciais default (IoT/routers/impressoras/ICS) |
 | 23 | `isp-keygen` | Gerador de keyspace WiFi padrão de ISPs |
+| 24 | `combiner` | Combinador de keywords (estilo intelligence-wordlist-generator) |
 
 > **Sintaxe detalhada e exemplos de cada subcomando:** [Wiki — Subcomandos](https://github.com/mrhenrike/WordListsForHacking/wiki)
 
