@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wfh-wordlist"
-version = "2.1.1"
+version = "2.1.2"
 description = "WordList For Hacking — Unified wordlist generation toolkit for pentest and red team operations"
 readme = "README.md"
 license = "MIT"
