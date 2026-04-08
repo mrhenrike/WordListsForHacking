@@ -1,0 +1,146 @@
+{
+  "_meta": {
+    "description": "SecLists corpus index for WFH ML training pipeline.",
+    "note": "Paths are relative to the SecLists root directory. Only structural patterns are extracted — no raw data is stored in the model.",
+    "license": "MIT (SecLists)",
+    "version": "1.0.0"
+  },
+  "password_sources": [
+    {
+      "path": "Passwords/Common-Credentials/xato-net-10-million-passwords-1000000.txt",
+      "label": "xato-net-1M",
+      "max_lines": 500000,
+      "priority": 1,
+      "note": "Top 1M passwords by frequency (xato.net aggregate)"
+    },
+    {
+      "path": "Passwords/Common-Credentials/Pwdb_top-1000000.txt",
+      "label": "Pwdb-1M",
+      "max_lines": 500000,
+      "priority": 2,
+      "note": "Pwdb aggregated top 1M passwords"
+    },
+    {
+      "path": "Passwords/Common-Credentials/100k-most-used-passwords-NCSC.txt",
+      "label": "NCSC-100k",
+      "max_lines": 100000,
+      "priority": 3,
+      "note": "UK NCSC 100k most used passwords"
+    },
+    {
+      "path": "Passwords/Common-Credentials/probable-v2_top-12000.txt",
+      "label": "probable-v2-12k",
+      "max_lines": 12000,
+      "priority": 4,
+      "note": "Probable-v2 top 12k passwords"
+    },
+    {
+      "path": "Passwords/Common-Credentials/darkweb2017_top-10000.txt",
+      "label": "darkweb2017-10k",
+      "max_lines": 10000,
+      "priority": 5,
+      "note": "Darkweb 2017 top 10k passwords"
+    },
+    {
+      "path": "Passwords/Leaked-Databases/rockyou-75.txt",
+      "label": "rockyou-75pct",
+      "max_lines": 50000,
+      "priority": 6,
+      "note": "RockYou top 75th percentile subset"
+    },
+    {
+      "path": "Passwords/WiFi-WPA/probable-v2-wpa-top4800.txt",
+      "label": "wpa-4800",
+      "max_lines": 4800,
+      "priority": 7,
+      "note": "WiFi WPA probable top 4800"
+    },
+    {
+      "path": "Passwords/Common-Credentials/10k-most-common.txt",
+      "label": "common-10k",
+      "max_lines": 10000,
+      "priority": 8,
+      "note": "10k most common passwords"
+    }
+  ],
+  "username_sources": [
+    {
+      "path": "Usernames/xato-net-10-million-usernames.txt",
+      "label": "xato-usernames-10M",
+      "max_lines": 500000,
+      "priority": 1,
+      "note": "Top 10M usernames by frequency (sampled first 500k)"
+    },
+    {
+      "path": "Usernames/Names/names.txt",
+      "label": "names-generic",
+      "max_lines": 10000,
+      "priority": 2,
+      "note": "Common first names (multi-language)"
+    },
+    {
+      "path": "Usernames/Names/names-brazil-top100000.txt",
+      "label": "names-brazil-100k",
+      "max_lines": 100000,
+      "priority": 3,
+      "note": "Brazilian names top 100k"
+    },
+    {
+      "path": "Usernames/Names/malenames-usa-top1000.txt",
+      "label": "malenames-usa-1k",
+      "max_lines": 1000,
+      "priority": 4,
+      "note": "US male names top 1k"
+    },
+    {
+      "path": "Usernames/Names/femalenames-usa-top1000.txt",
+      "label": "femalenames-usa-1k",
+      "max_lines": 1000,
+      "priority": 5,
+      "note": "US female names top 1k"
+    },
+    {
+      "path": "Usernames/Names/familynames-usa-top1000.txt",
+      "label": "familynames-usa-1k",
+      "max_lines": 1000,
+      "priority": 6,
+      "note": "US family names top 1k"
+    },
+    {
+      "path": "Usernames/cirt-default-usernames.txt",
+      "label": "cirt-default",
+      "max_lines": 1000,
+      "priority": 7,
+      "note": "CIRT default usernames"
+    }
+  ],
+  "frequency_sources": [
+    {
+      "path": "Passwords/Common-Credentials/four-digit-pin-codes-sorted-by-frequency-withcount.csv",
+      "label": "pin-frequency",
+      "format": "csv_withcount",
+      "note": "PIN codes sorted by frequency with count column"
+    },
+    {
+      "path": "Passwords/Leaked-Databases/phpbb-withcount.txt",
+      "label": "phpbb-withcount",
+      "format": "space_withcount",
+      "max_lines": 100000,
+      "note": "phpBB passwords with frequency count"
+    },
+    {
+      "path": "Passwords/Leaked-Databases/myspace-withcount.txt",
+      "label": "myspace-withcount",
+      "format": "space_withcount",
+      "max_lines": 50000,
+      "note": "MySpace passwords with frequency count"
+    },
+    {
+      "path": "Passwords/Leaked-Databases/honeynet-withcount.txt",
+      "label": "honeynet-withcount",
+      "format": "space_withcount",
+      "max_lines": 100000,
+      "note": "Honeynet passwords with frequency count"
+    }
+  ]
+}

@@ -9,22 +9,18 @@ Funcionalidades:
   - Suporte a cookies, User-Agent customizável e headers adicionais
   - Autenticação HTTP básica
   - Exclusão de stop-words (EN/PT-BR) via --no-stopwords ou arquivo customizado
-  - Output streaming para arquivo ou stdout
-
-Exemplos:
-  wfh.py scrape https://empresa.com.br
-  wfh.py scrape https://empresa.com.br -d 2 --min-word 6 --emails --meta
-  wfh.py scrape https://empresa.com.br --auth usuario:senha
-  wfh.py scrape https://empresa.com.br --proxy http://127.0.0.1:8080
-  wfh.py scrape https://empresa.com.br --no-stopwords
-  wfh.py scrape https://empresa.com.br --user-agent "Mozilla/5.0 (custom)"
-  wfh.py scrape https://empresa.com.br --header "X-Api-Key: abc123"
+  - JS/CSS extraction (--include-js, --include-css)
+  - PDF text extraction during crawl (--include-pdf)
+  - Lowercase mode (--lowercase)
+  - Subdomain strategy (exact/children/all)
+  - Separate email/URL output files (--output-emails, --output-urls)
 
 Autor: André Henrique (@mrhenrike)
-Versão: 1.1.0
+Versão: 1.2.0
 """
 from __future__ import annotations
 
+import io
 import logging
 import re
 import time
@@ -41,6 +37,12 @@ try:
 except ImportError:
     _DEPS_OK = False
     logger.warning("requests e beautifulsoup4 não instalados. web_scraper desativado.")
+
+try:
+    from pypdf import PdfReader
+    _PDF_OK = True
+except ImportError:
+    _PDF_OK = False
 
 
 # Padrão para extração de palavras (sem números puros)
@@ -119,6 +121,11 @@ class WebScraper:
         with_spaces: bool = False,
         capture_paths: bool = False,
         capture_subdomains: bool = False,
+        include_js: bool = False,
+        include_css: bool = False,
+        include_pdf: bool = False,
+        lowercase: bool = False,
+        subdomain_strategy: str = "exact",
     ) -> None:
         self.start_url = start_url
         self.depth = depth
@@ -133,10 +140,16 @@ class WebScraper:
         self.with_spaces = with_spaces
         self.capture_paths = capture_paths
         self.capture_subdomains = capture_subdomains
+        self.include_js = include_js
+        self.include_css = include_css
+        self.include_pdf = include_pdf
+        self.lowercase = lowercase
+        self.subdomain_strategy = subdomain_strategy
 
         parsed = urlparse(start_url)
         self.base_domain = f"{parsed.scheme}://{parsed.netloc}"
         self._parsed_start = parsed
+        self._start_host = parsed.hostname or ""
 
         self.session = requests.Session()
         self.session.headers["User-Agent"] = user_agent or self.DEFAULT_UA
@@ -149,63 +162,100 @@ class WebScraper:
         if proxy:
             self.session.proxies = {"http": proxy, "https": proxy}
 
-    def _fetch(self, url: str) -> Optional[str]:
-        """
-        Baixa o HTML de uma URL.
+        self.urls_visited: list[str] = []
+        self.emails_found: set[str] = set()
 
-        Args:
-            url: URL a baixar.
+    def _fetch(self, url: str) -> Optional[tuple[str, str]]:
+        """Fetch a URL and return (content_text, content_type).
+
+        For PDFs, extracts text via pypdf. For JS/CSS, returns raw text.
 
         Returns:
-            HTML como string ou None em caso de erro.
+            Tuple of (text_content, content_type) or None on error.
         """
         try:
             resp = self.session.get(url, timeout=self.timeout)
             resp.raise_for_status()
-            # Forçar UTF-8 se charset não declarado, evitando UnicodeDecodeError
+            ct = resp.headers.get("Content-Type", "").lower()
+
+            if "application/pdf" in ct:
+                if self.include_pdf and _PDF_OK:
+                    return self._extract_pdf_text(resp.content), "pdf"
+                return None
+
             if resp.encoding and resp.encoding.lower() in ("iso-8859-1", "latin-1", "windows-1252"):
                 resp.encoding = "utf-8"
-            return resp.content.decode("utf-8", errors="replace")
+            text = resp.content.decode("utf-8", errors="replace")
+
+            if "javascript" in ct or "application/json" in ct:
+                return (text, "js") if self.include_js else None
+            if "text/css" in ct:
+                return (text, "css") if self.include_css else None
+
+            return text, "html"
         except Exception as exc:
             logger.debug("Erro ao acessar %s: %s", url, exc)
             return None
 
-    def _extract_words(self, html: str, url: str = "") -> set[str]:
-        """
-        Extrai palavras únicas de um HTML.
+    def _extract_pdf_text(self, content: bytes) -> str:
+        """Extract text from PDF binary content using pypdf."""
+        try:
+            reader = PdfReader(io.BytesIO(content))
+            return " ".join(page.extract_text() or "" for page in reader.pages)
+        except Exception as exc:
+            logger.debug("Erro ao extrair PDF: %s", exc)
+            return ""
+
+    def _extract_words(self, text: str, url: str = "", content_type: str = "html") -> set[str]:
+        """Extract unique words from HTML, JS, CSS, or plain text.
 
         Args:
-            html: Conteúdo HTML.
+            text: Content to parse.
             url: Source URL for path/subdomain extraction.
+            content_type: One of 'html', 'js', 'css', 'pdf'.
 
         Returns:
-            Set de palavras extraídas.
+            Set of extracted words.
         """
-        soup = BeautifulSoup(html, "lxml")
-        for tag in soup(["script", "style", "noscript"]):
-            tag.decompose()
+        if content_type == "html":
+            soup = BeautifulSoup(text, "lxml")
+            decompose_tags = ["noscript"]
+            if not self.include_js:
+                decompose_tags.append("script")
+            if not self.include_css:
+                decompose_tags.append("style")
+            for tag in soup(decompose_tags):
+                tag.decompose()
+            plain = soup.get_text(separator=" ")
+        else:
+            plain = text
 
-        text = soup.get_text(separator=" ")
         words: set[str] = set()
 
-        for match in _WORD_RE.finditer(text):
+        for match in _WORD_RE.finditer(plain):
             word = match.group()
+            if self.lowercase:
+                word = word.lower()
             if self.min_word_len <= len(word) <= self.max_word_len:
                 if word.lower() not in self.stopwords:
                     words.add(word)
 
         if self.with_numbers:
-            _NUM_WORD_RE = re.compile(r"[a-zA-Z0-9À-ÿ][a-zA-Z0-9À-ÿ'-]+")
-            for match in _NUM_WORD_RE.finditer(text):
+            _num_re = re.compile(r"[a-zA-Z0-9À-ÿ][a-zA-Z0-9À-ÿ'-]+")
+            for match in _num_re.finditer(plain):
                 word = match.group()
+                if self.lowercase:
+                    word = word.lower()
                 if self.min_word_len <= len(word) <= self.max_word_len:
                     if word.lower() not in self.stopwords:
                         words.add(word)
 
         if self.with_spaces:
-            _PHRASE_RE = re.compile(r"[a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ\s'-]{4,60}")
-            for match in _PHRASE_RE.finditer(text):
+            _phrase_re = re.compile(r"[a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ\s'-]{4,60}")
+            for match in _phrase_re.finditer(plain):
                 phrase = match.group().strip()
+                if self.lowercase:
+                    phrase = phrase.lower()
                 if " " in phrase and self.min_word_len <= len(phrase) <= self.max_word_len:
                     words.add(phrase)
 
@@ -214,6 +264,8 @@ class WebScraper:
             segments = [s for s in parsed.path.split("/") if s and len(s) >= 2]
             for seg in segments:
                 clean = re.sub(r"[^a-zA-Z0-9_-]", "", seg)
+                if self.lowercase:
+                    clean = clean.lower()
                 if clean and len(clean) >= self.min_word_len:
                     words.add(clean)
 
@@ -223,7 +275,7 @@ class WebScraper:
             labels = hostname.split(".")
             for label in labels[:-2]:
                 if label and len(label) >= 2:
-                    words.add(label)
+                    words.add(label.lower() if self.lowercase else label)
 
         return words
 
@@ -261,33 +313,57 @@ class WebScraper:
                         values.add(word)
         return values
 
+    def _is_allowed_domain(self, url: str) -> bool:
+        """Check if URL domain matches the subdomain strategy."""
+        parsed = urlparse(url)
+        host = parsed.hostname or ""
+
+        if self.subdomain_strategy == "exact":
+            return host == self._start_host
+
+        start_parts = self._start_host.split(".")
+        base = ".".join(start_parts[-2:]) if len(start_parts) >= 2 else self._start_host
+
+        if self.subdomain_strategy == "children":
+            return host == self._start_host or host.endswith("." + self._start_host)
+
+        # "all" — any subdomain of the base domain
+        return host == base or host.endswith("." + base)
+
     def _extract_links(self, html: str, current_url: str) -> list[str]:
-        """
-        Extrai links internos de uma página.
+        """Extract internal links from HTML, including JS/CSS/PDF references.
 
         Args:
-            html: Conteúdo HTML.
-            current_url: URL atual para resolução de URLs relativas.
+            html: HTML content.
+            current_url: Current URL for resolving relative URLs.
 
         Returns:
-            Lista de URLs internas únicas.
+            List of unique allowed URLs.
         """
         soup = BeautifulSoup(html, "lxml")
-        links: list[str] = []
-        for a in soup.find_all("a", href=True):
-            href = a["href"].strip()
-            full = urljoin(current_url, href)
-            if full.startswith(self.base_domain):
+        links: set[str] = set()
+
+        tags_attrs = [("a", "href")]
+        if self.include_js:
+            tags_attrs.append(("script", "src"))
+        if self.include_css:
+            tags_attrs.append(("link", "href"))
+
+        for tag_name, attr in tags_attrs:
+            for el in soup.find_all(tag_name, **{attr: True}):
+                href = el[attr].strip()
+                full = urljoin(current_url, href)
                 clean = full.split("#")[0].split("?")[0]
-                links.append(clean)
-        return list(set(links))
+                if self._is_allowed_domain(clean):
+                    links.add(clean)
+
+        return list(links)
 
     def crawl(self) -> Generator[str, None, None]:
-        """
-        Executa o crawl e gera palavras/emails/metadados extraídos.
+        """Execute crawl and yield extracted words/emails/metadata.
 
         Yields:
-            Strings únicas extraídas do site.
+            Unique strings extracted from the site.
         """
         if not _DEPS_OK:
             logger.error("Instale: pip install requests beautifulsoup4 lxml")
@@ -302,33 +378,39 @@ class WebScraper:
             if url in visited:
                 continue
             visited.add(url)
+            self.urls_visited.append(url)
 
             logger.info("Crawling [depth=%d]: %s", current_depth, url)
-            html = self._fetch(url)
-            if not html:
+            result = self._fetch(url)
+            if not result:
                 continue
 
-            words = self._extract_words(html, url=url)
+            text, ct = result
+            if not text:
+                continue
+
+            words = self._extract_words(text, url=url, content_type=ct)
             new_words = words - all_words
             all_words |= words
 
             for word in sorted(new_words):
                 yield word
 
-            if self.extract_emails:
-                for email in self._extract_emails(html):
+            if self.extract_emails and ct == "html":
+                for email in self._extract_emails(text):
+                    self.emails_found.add(email)
                     if email not in all_words:
                         all_words.add(email)
                         yield email
 
-            if self.extract_meta:
-                for meta_word in self._extract_meta(html):
+            if self.extract_meta and ct == "html":
+                for meta_word in self._extract_meta(text):
                     if meta_word not in all_words:
                         all_words.add(meta_word)
                         yield meta_word
 
-            if current_depth < self.depth:
-                for link in self._extract_links(html, url):
+            if current_depth < self.depth and ct == "html":
+                for link in self._extract_links(text, url):
                     if link not in visited:
                         queue.append((link, current_depth + 1))
 

@@ -83,7 +83,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "2.1.2"
+VERSION = "2.2.0"
 
 # ── Graceful shutdown ──────────────────────────────────────────────────────────
 _SHUTDOWN_REQUESTED = False
@@ -156,6 +156,8 @@ MENU = f"""
   {Fore.GREEN}[19]{Style.RESET_ALL} train       — Train ML pattern model
   {Fore.GREEN}[20]{Style.RESET_ALL} sysinfo     — Show hardware profile and compute backend
   {Fore.GREEN}[21]{Style.RESET_ALL} mangle      — Apply hashcat-style mangling rules
+  {Fore.GREEN}[22]{Style.RESET_ALL} default-creds — Query default credentials database (IoT/routers/SNMP)
+  {Fore.GREEN}[23]{Style.RESET_ALL} isp-keygen    — ISP default WiFi password keyspace generator
   {Fore.GREEN}[0]{Style.RESET_ALL}  Exit
 """
 
@@ -185,6 +187,7 @@ def _write_output(
     min_len: int = 0,
     max_len: int = 9999,
     append: bool = False,
+    stream: bool = False,
 ) -> int:
     """
     Write generator output to file or stdout with optional progress bar.
@@ -199,6 +202,7 @@ def _write_output(
         min_len: Minimum length filter.
         max_len: Maximum length filter.
         append: If True, open file in append mode (for --resume).
+        stream: If True, flush after each write (real-time output).
 
     Returns:
         Total entries written.
@@ -245,8 +249,12 @@ def _write_output(
             line = word + "\n"
             if f:
                 f.write(line)
+                if stream:
+                    f.flush()
             else:
                 sys.stdout.write(line)
+                if stream:
+                    sys.stdout.flush()
             count += 1
             if pbar:
                 pbar.update(1)
@@ -683,6 +691,13 @@ def cmd_scrape(args: argparse.Namespace) -> None:
     with_spaces = getattr(args, "with_spaces", False)
     capture_paths = getattr(args, "capture_paths", False)
     capture_subdomains = getattr(args, "capture_subdomains", False)
+    include_js = getattr(args, "include_js", False)
+    include_css = getattr(args, "include_css", False)
+    include_pdf = getattr(args, "include_pdf", False)
+    lowercase = getattr(args, "lowercase", False)
+    subdomain_strategy = getattr(args, "subdomain_strategy", "exact")
+    output_emails = getattr(args, "output_emails", None)
+    output_urls = getattr(args, "output_urls", None)
 
     # Multi-URL mode
     urls_file = getattr(args, "urls_file", None)
@@ -697,6 +712,9 @@ def cmd_scrape(args: argparse.Namespace) -> None:
             return
     else:
         urls_to_crawl = [args.url]
+
+    all_emails: set[str] = set()
+    all_urls: list[str] = []
 
     total_count = 0
     for url in urls_to_crawl:
@@ -719,14 +737,43 @@ def cmd_scrape(args: argparse.Namespace) -> None:
             with_spaces=with_spaces,
             capture_paths=capture_paths,
             capture_subdomains=capture_subdomains,
+            include_js=include_js,
+            include_css=include_css,
+            include_pdf=include_pdf,
+            lowercase=lowercase,
+            subdomain_strategy=subdomain_strategy,
         )
         _info(f"Crawling: {url} [depth={args.depth}]")
+        if include_js:
+            _info("Including JavaScript content")
+        if include_css:
+            _info("Including CSS content")
+        if include_pdf:
+            _info("Including PDF content")
         if getattr(args, "proxy", None):
             _info(f"Proxy: {args.proxy}")
-        count = _write_output(scraper.crawl(), args.output, append=(total_count > 0))
+        stream_mode = getattr(args, "stream", False)
+        if stream_mode and not args.output:
+            _warn("--stream requires -o/--output. Ignoring --stream.")
+            stream_mode = False
+        count = _write_output(scraper.crawl(), args.output, append=(total_count > 0), stream=stream_mode)
         total_count += count
+        all_emails |= scraper.emails_found
+        all_urls.extend(scraper.urls_visited)
 
     _ok(f"Extracted: {total_count:,} words from {len(urls_to_crawl)} URL(s)")
+
+    if output_emails and all_emails:
+        with open(output_emails, "w", encoding="utf-8", newline="\n") as ef:
+            for email in sorted(all_emails):
+                ef.write(email + "\n")
+        _ok(f"Emails: {len(all_emails)} written to {output_emails}")
+
+    if output_urls and all_urls:
+        with open(output_urls, "w", encoding="utf-8", newline="\n") as uf:
+            for u in all_urls:
+                uf.write(u + "\n")
+        _ok(f"URLs visited: {len(all_urls)} written to {output_urls}")
 
 
 def cmd_ocr(args: argparse.Namespace) -> None:
@@ -1055,6 +1102,18 @@ def cmd_reverse(args: argparse.Namespace) -> None:
         _ok(f"Saved to: {output}")
     elif inplace:
         _ok(f"File updated in-place: {args.wordlist}")
+
+
+def cmd_default_creds(args: argparse.Namespace) -> None:
+    """Handler for the default-creds subcommand — query IoT/router default credentials."""
+    from wfh_modules.default_creds import handle_default_creds
+    handle_default_creds(args, {})
+
+
+def cmd_isp_keygen(args: argparse.Namespace) -> None:
+    """Handler for ISP default WiFi password keyspace generation."""
+    from wfh_modules.isp_keygen import handle_isp_keygen
+    handle_isp_keygen(args, {})
 
 
 def cmd_mangle(args: argparse.Namespace) -> None:
@@ -1554,6 +1613,23 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Extract URL path segments as additional words")
     p_sc.add_argument("--capture-subdomains", dest="capture_subdomains", action="store_true",
                        help="Extract subdomain labels as additional words")
+    p_sc.add_argument("--include-js", dest="include_js", action="store_true",
+                       help="Include words from JavaScript content (cewler parity)")
+    p_sc.add_argument("--include-css", dest="include_css", action="store_true",
+                       help="Include words from CSS content (cewler parity)")
+    p_sc.add_argument("--include-pdf", dest="include_pdf", action="store_true",
+                       help="Extract text from PDF files found during crawl (requires pypdf)")
+    p_sc.add_argument("--lowercase", action="store_true",
+                       help="Lowercase all extracted words")
+    p_sc.add_argument("--subdomain-strategy", dest="subdomain_strategy",
+                       choices=["exact", "children", "all"], default="exact",
+                       help="Subdomain crawl scope: exact (default), children, all")
+    p_sc.add_argument("--output-emails", dest="output_emails", metavar="FILE",
+                       help="Write extracted emails to separate file")
+    p_sc.add_argument("--output-urls", dest="output_urls", metavar="FILE",
+                       help="Write visited URLs to separate file")
+    p_sc.add_argument("--stream", action="store_true",
+                       help="Flush output after each page (real-time streaming, requires -o)")
     p_sc.add_argument("-o", "--output", help="Output file")
 
     # ── ocr ───────────────────────────────────────────────────────────────
@@ -1730,6 +1806,81 @@ def build_parser() -> argparse.ArgumentParser:
                        help="List available mangling rules and exit")
     p_mn.add_argument("-o", "--output", help="Output file")
 
+    # ── default-creds ─────────────────────────────────────────────────────────
+    p_dc = sub.add_parser(
+        "default-creds",
+        help="Query default credentials database for IoT, routers, printers, ICS/SCADA",
+        description=(
+            "Query the consolidated default credentials database.\n\n"
+            "Contains factory-default user:password pairs from 25+ vendors,\n"
+            "SNMP community strings and SNMPv3 defaults.\n\n"
+            "Sources: RouterXPL-Forge, routersploit, MikrotikAPI-BF.\n\n"
+            "Examples:\n"
+            "  wfh.py default-creds -o all_defaults.lst\n"
+            "  wfh.py default-creds --vendor mikrotik -o mikrotik.lst\n"
+            "  wfh.py default-creds --vendor huawei --format json\n"
+            "  wfh.py default-creds --snmp -o snmp_communities.lst\n"
+            "  wfh.py default-creds --snmp --snmp-version v3 -o snmpv3.lst\n"
+            "  wfh.py default-creds --format user -o usernames.lst\n"
+            "  wfh.py default-creds --list-vendors"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_dc.add_argument("--vendor", help="Filter by vendor name (partial match)")
+    p_dc.add_argument("--protocol", help="Filter by protocol (api, ssh, telnet, http)")
+    p_dc.add_argument("--category", help="Filter by category (router, printer, ics)")
+    p_dc.add_argument(
+        "--format", choices=["combo", "user", "pass", "json"],
+        default="combo", help="Output format (default: combo = user:pass)",
+    )
+    p_dc.add_argument("--snmp", action="store_true",
+                       help="Output SNMP community strings instead of credentials")
+    p_dc.add_argument("--snmp-version", dest="snmp_version",
+                       choices=["v2", "v3"], default="v2",
+                       help="SNMP version (default: v2)")
+    p_dc.add_argument("--list-vendors", dest="list_vendors", action="store_true",
+                       help="List all vendors in the database and exit")
+    p_dc.add_argument("--list-protocols", dest="list_protocols", action="store_true",
+                       help="List all protocols in the database and exit")
+    p_dc.add_argument("-o", "--output", help="Output file")
+
+    # ── isp-keygen ─────────────────────────────────────────────────────────────
+    p_isp = sub.add_parser(
+        "isp-keygen",
+        help="ISP default WiFi password keyspace generator",
+        description=(
+            "Generate vendor-specific WiFi password wordlists based on known\n"
+            "ISP default password patterns.\n\n"
+            "Xfinity/Comcast pattern: word5 + 4digit + word6\n"
+            "  e.g., fever7538harbor (15 chars, lowercase + digits)\n\n"
+            "Keyspace: 686 × 10,000 × 685 = ~4.7 billion per direction.\n\n"
+            "Examples:\n"
+            "  wfh.py isp-keygen --list-isps\n"
+            "  wfh.py isp-keygen --isp xfinity_comcast --estimate\n"
+            "  wfh.py isp-keygen --isp xfinity_comcast --limit 1000 -o sample.lst\n"
+            "  wfh.py isp-keygen --isp xfinity_comcast --direction both -o full.lst\n"
+            "  wfh.py isp-keygen --isp xfinity_comcast --direction reverse --limit 500000 -o rev.lst\n"
+            "  wfh.py isp-keygen --isp xfinity_comcast --word5-file custom5.txt -o custom.lst"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_isp.add_argument("--isp", default="xfinity_comcast",
+                        help="ISP pattern name (default: xfinity_comcast)")
+    p_isp.add_argument("--direction", choices=["forward", "reverse", "both"],
+                        default="forward",
+                        help="Generation direction (default: forward)")
+    p_isp.add_argument("--limit", type=int, default=0,
+                        help="Max entries to generate (0 = all)")
+    p_isp.add_argument("--estimate", action="store_true",
+                        help="Show keyspace estimate only, don't generate")
+    p_isp.add_argument("--word5-file", dest="word5_file",
+                        help="Custom 5-letter word file (overrides built-in)")
+    p_isp.add_argument("--word6-file", dest="word6_file",
+                        help="Custom 6-letter word file (overrides built-in)")
+    p_isp.add_argument("--list-isps", dest="list_isps", action="store_true",
+                        help="List available ISP patterns and exit")
+    p_isp.add_argument("-o", "--output", help="Output file")
+
     # ── sysinfo ───────────────────────────────────────────────────────────────
     sub.add_parser(
         "sysinfo",
@@ -1819,6 +1970,9 @@ def build_parser() -> argparse.ArgumentParser:
             "Examples:\n"
             "  wfh.py train --csv export.csv --auto -o .model/pattern_model.json\n"
             "  wfh.py train --auto\n"
+            "  wfh.py train --seclists\n"
+            "  wfh.py train --seclists /path/to/SecLists --seclists-categories password frequency\n"
+            "  wfh.py train --auto --seclists\n"
             "  wfh.py train --csv users.csv --wordlist wlist_brasil.lst --usernames username_br.lst\n"
             "  wfh.py train --csv export.csv --uid-col samaccountname --mail-col mail"
         ),
@@ -1859,6 +2013,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_tr.add_argument(
         "--max-lines", dest="max_lines", type=int, default=500_000,
         help="Max lines to read from wordlists (default: 500000)",
+    )
+    p_tr.add_argument(
+        "--seclists", metavar="PATH", nargs="?", const="auto",
+        help="Train from SecLists corpus (auto-discover or specify path)",
+    )
+    p_tr.add_argument(
+        "--seclists-categories", dest="seclists_categories",
+        metavar="CAT", nargs="+", default=None,
+        choices=["password", "username", "frequency"],
+        help="SecLists categories to train: password username frequency (default: all)",
     )
     p_tr.add_argument(
         "-o", "--output", metavar="FILE",
@@ -2074,8 +2238,39 @@ def cmd_train(args: argparse.Namespace) -> None:
                 _info(f"  → {stats['processed']:,} samples")
                 trained_any = True
 
+    # ── SecLists corpus ──────────────────────────────────────────────────────────
+    seclists_flag = getattr(args, "seclists", None)
+    if seclists_flag:
+        from wfh_modules.seclists_trainer import find_seclists_root, train_from_seclists
+
+        hint = None if seclists_flag == "auto" else seclists_flag
+        sl_root = find_seclists_root(hint)
+        if sl_root:
+            _info(f"SecLists root: {sl_root}")
+            sl_cats = getattr(args, "seclists_categories", None)
+            sl_summary = train_from_seclists(
+                model, sl_root, categories=sl_cats,
+            )
+            pw_f = sl_summary.get("password_files", 0)
+            pw_s = sl_summary.get("password_samples", 0)
+            un_f = sl_summary.get("username_files", 0)
+            un_s = sl_summary.get("username_samples", 0)
+            fr_f = sl_summary.get("frequency_files", 0)
+            fr_s = sl_summary.get("frequency_samples", 0)
+            skipped = sl_summary.get("skipped", [])
+
+            _info(f"  SecLists passwords:  {pw_f} files, {pw_s:,} samples")
+            _info(f"  SecLists usernames:  {un_f} files, {un_s:,} samples")
+            _info(f"  SecLists frequency:  {fr_f} files, {fr_s:,} samples")
+            if skipped:
+                _warn(f"  Skipped (not found): {', '.join(skipped)}")
+            if pw_f + un_f + fr_f > 0:
+                trained_any = True
+        else:
+            _warn("SecLists not found. Use --seclists PATH or place SecLists alongside WFH.")
+
     if not trained_any:
-        _warn("No training data provided. Use --csv, --wordlist, --usernames, or --auto.")
+        _warn("No training data provided. Use --csv, --wordlist, --usernames, --auto, or --seclists.")
         return
 
     # ── Save model ─────────────────────────────────────────────────────────────
@@ -2172,6 +2367,8 @@ def main() -> None:
         "corp-prefixes": cmd_corp_prefixes,
         "sysinfo":       cmd_sysinfo,
         "mangle":        cmd_mangle,
+        "default-creds": cmd_default_creds,
+        "isp-keygen":    cmd_isp_keygen,
     }
 
     handler = handlers.get(args.command)

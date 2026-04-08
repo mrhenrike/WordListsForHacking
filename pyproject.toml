@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wfh-wordlist"
-version = "2.1.2"
+version = "2.2.0"
 description = "WordList For Hacking — Unified wordlist generation toolkit for pentest and red team operations"
 readme = "README.md"
 license = "MIT"
@@ -61,8 +61,11 @@ docs = [
     "python-docx>=1.1.0",
     "striprtf>=0.0.26",
 ]
+scrape = [
+    "pypdf>=4.0.0",
+]
 full = [
-    "wfh-wordlist[ocr,docs]",
+    "wfh-wordlist[ocr,docs,scrape]",
 ]
 
 [project.urls]
