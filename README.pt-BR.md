@@ -12,7 +12,7 @@
 <h1 align="center">WordListsForHacking</h1>
 
 <p align="center">
-  <a href="https://github.com/mrhenrike/WordListsForHacking/releases"><img src="https://img.shields.io/badge/version-2.3.0-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/mrhenrike/WordListsForHacking/releases"><img src="https://img.shields.io/badge/version-2.4.0-blue?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.8%2B-yellow?style=flat-square" alt="Python"></a>
   <a href="https://github.com/mrhenrike/WordListsForHacking"><img src="https://img.shields.io/badge/platform-linux%20%7C%20windows%20%7C%20macos%20%7C%20termux-lightgrey?style=flat-square" alt="Platform"></a>
@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  Toolkit unificado de geração de wordlists para pentest autorizado, red team e treinamentos de segurança. Inclui scraping web com extração JS/CSS/PDF, base de credenciais default (IoT/routers/impressoras/ICS), gerador de keyspace ISP e treino ML com corpus SecLists.
+  Toolkit unificado de geração de wordlists para pentest autorizado, red team e treinamentos de segurança — 25 subcomandos em uma única CLI. Geração por charset/máscara, profiling pessoal e corporativo, scraping web (JS/CSS/PDF), OCR, parsing de documentos (PDF/XLSX/DOCX), leet speak, XOR crypto, DNS fuzzing, telefones, enumeração de usuários corporativos, padrões saúde/farmácia, base de credenciais default (IoT/ICS/SCADA/PLC/HMI), keyspace WiFi ISP, análise comportamental password-DNA, combinador de keywords, word mangling, merge e sanitização, ranking ML com corpus SecLists e análise estatística.
 </p>
 
 <p align="center">
@@ -30,7 +30,7 @@
 ---
 
 > **Autor:** André Henrique ([@mrhenrike](https://github.com/mrhenrike))
-> **Versão:** 2.3.0 · **Licença:** MIT · **Python:** 3.8+
+> **Versão:** 2.4.0 · **Licença:** MIT · **Python:** 3.8+
 
 > **Documentação completa:** [Wiki](https://github.com/mrhenrike/WordListsForHacking/wiki)
 
@@ -196,6 +196,46 @@ python wfh.py sanitize merged.lst --inplace
 
 ---
 
+## Password DNA
+
+Analise padrões de senhas e gere variantes comportamentais. O subcomando `password-dna` extrai o "DNA" estrutural de senhas conhecidas (posições de maiúsculas, minúsculas, dígitos e símbolos) e produz novos candidatos que seguem os mesmos padrões comportamentais.
+
+```bash
+# Analisar uma lista de senhas conhecidas e gerar variantes
+python wfh.py password-dna --input senhas_conhecidas.lst --depth 2 -o dna_variantes.lst
+
+# Gerar variantes a partir de uma seed com expansão agressiva
+python wfh.py password-dna --seed "Empresa2024!" --depth 3 --leet -o seed_variantes.lst
+
+# Apenas relatório de análise DNA (sem geração)
+python wfh.py password-dna --input senhas_conhecidas.lst --analyze-only --format json -o dna_relatorio.json
+```
+
+---
+
+## Base de Credenciais Default
+
+Consulte a base integrada com 1.329+ credenciais de fábrica cobrindo 88 vendors e 14 protocolos — routers, switches, impressoras, câmeras IP, ICS/SCADA (PLCs, HMIs, RTUs), gateways IoT e mais.
+
+```bash
+# Listar todos os vendors suportados
+python wfh.py default-creds --list-vendors
+
+# Exportar credenciais de um vendor específico
+python wfh.py default-creds --vendor siemens --format combo -o siemens_creds.lst
+
+# Filtrar por protocolo (telnet, ssh, http, snmp, modbus, s7comm, etc.)
+python wfh.py default-creds --protocol modbus --format user -o modbus_users.lst
+
+# Buscar por categoria de dispositivo
+python wfh.py default-creds --category ics --format combo -o ics_defaults.lst
+
+# Exportar base completa como JSON
+python wfh.py default-creds --export-all --format json -o all_defaults.json
+```
+
+---
+
 ## Wordlists
 
 | Arquivo | Descrição | Entradas |
@@ -267,6 +307,8 @@ Se uma senha pertencente a você ou sua organização aparece nesta wordlist, is
 | [elpscrk](https://github.com/D4Vinci/elpscrk) | Geração por permutação |
 | [BEWGor](https://github.com/berzerk0/BEWGor) | Gerador biográfico |
 | [pnwgen](https://github.com/toxydose/pnwgen) | Geração de telefones |
+| [intelligence-wordlist-generator](https://github.com/MichaelDim02/intelligence-wordlist-generator) | Combinador de keywords |
+| [SCaDAPass](https://github.com/scadastrangelove/SCaDAPass) | Credenciais default ICS/SCADA |
 
 ---
 

@@ -10,7 +10,7 @@ behavioral patterns from data/behavior_patterns.json, and multi-char special suf
 Inspired by CUPP, elpscrk, and BEWGor — absorbs their best mutation strategies.
 
 Author: André Henrique (@mrhenrike)
-Version: 2.3.0
+Version: 2.4.0
 """
 from __future__ import annotations
 

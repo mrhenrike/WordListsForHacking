@@ -83,7 +83,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "2.3.1"
+VERSION = "2.4.0"
 
 # ── Graceful shutdown ──────────────────────────────────────────────────────────
 _SHUTDOWN_REQUESTED = False
