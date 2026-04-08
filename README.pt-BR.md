@@ -47,8 +47,18 @@
 ### Instalar via pip (recomendado)
 
 ```bash
-pip install wfh-wordlist            # core
-pip install wfh-wordlist[full]      # todos os extras (OCR, parsing de documentos)
+pip install wfh-wordlist                # core (charset, profile, dns, scrape, analyze, ...)
+pip install wfh-wordlist[docs]         # + extração PDF/XLSX/DOCX
+pip install wfh-wordlist[scrape]       # + crawl de PDFs durante web scraping
+pip install wfh-wordlist[ocr]          # + OCR (requer PyTorch)
+pip install wfh-wordlist[full]         # todos os extras
+```
+
+Verificar instalação:
+
+```bash
+wfh --help                              # deve mostrar 25 subcomandos
+pip show wfh-wordlist                   # verificar versão
 ```
 
 ### Ou clonar do repositório

@@ -1,0 +1,5 @@
+# Only the repository owner can modify CI/CD workflows and security config
+/.github/ @mrhenrike
+/pyproject.toml @mrhenrike
+/MANIFEST.in @mrhenrike
+/setup.cfg @mrhenrike

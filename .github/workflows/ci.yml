@@ -2,11 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
     tags: ["v*"]
   pull_request:
     branches: [main]
 
+# Least-privilege: read-only for all jobs by default
 permissions:
   contents: read
 
@@ -14,11 +15,15 @@ jobs:
   lint:
     name: Lint (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         python-version: ["3.8", "3.10", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -38,11 +43,15 @@ jobs:
   syntax-check:
     name: Syntax check (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         python-version: ["3.8", "3.10", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -61,8 +70,12 @@ jobs:
   build-check:
     name: Build package
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -79,14 +92,23 @@ jobs:
       - name: Check package with twine
         run: twine check dist/*
 
+      - name: Verify package hashes
+        run: |
+          echo "=== SHA256 hashes ==="
+          sha256sum dist/*
+
   import-check:
     name: Import check (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     strategy:
       matrix:
         python-version: ["3.8", "3.10", "3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
@@ -136,9 +158,13 @@ jobs:
   version-check:
     name: Version tag consistency
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
