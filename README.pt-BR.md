@@ -104,6 +104,7 @@ python wfh.py --help       # ajuda completa da CLI
 | 22 | `default-creds` | Consulta base de credenciais default (IoT/routers/impressoras/ICS) |
 | 23 | `isp-keygen` | Gerador de keyspace WiFi padrão de ISPs |
 | 24 | `combiner` | Combinador de keywords (estilo intelligence-wordlist-generator) |
+| 25 | `password-dna` | Análise de padrões de senha e geração de variantes comportamentais |
 
 > **Sintaxe detalhada e exemplos de cada subcomando:** [Wiki — Subcomandos](https://github.com/mrhenrike/WordListsForHacking/wiki)
 

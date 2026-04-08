@@ -80,6 +80,7 @@ python wfh.py --help       # full CLI help
 | 22 | `default-creds` | Query default credentials database (IoT/routers/printers/ICS) |
 | 23 | `isp-keygen` | ISP default WiFi password keyspace generator |
 | 24 | `combiner` | Keyword combiner (intelligence-wordlist-generator style) |
+| 25 | `password-dna` | Analyze password patterns and generate behavioral variants |
 
 > **Detailed syntax and examples for each subcommand:** [Wiki — Subcommands](https://github.com/mrhenrike/WordListsForHacking/wiki)
 

@@ -83,7 +83,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "2.3.0"
+VERSION = "2.3.1"
 
 # ── Graceful shutdown ──────────────────────────────────────────────────────────
 _SHUTDOWN_REQUESTED = False
@@ -1217,6 +1217,27 @@ def cmd_isp_keygen(args: argparse.Namespace) -> None:
     handle_isp_keygen(args, {})
 
 
+def cmd_password_dna(args: argparse.Namespace) -> None:
+    """Handler for password DNA analysis and variant generation."""
+    from wfh_modules.password_dna import handle_password_dna
+
+    dna, gen = handle_password_dna(args, {})
+    if not dna or not gen:
+        _err("No passwords provided. Pass them as arguments or via --file.")
+        return
+
+    _info(f"Analyzing {dna.n} password(s)...")
+    if getattr(args, "show_dna", False):
+        print()
+        print(dna.describe())
+        print()
+
+    depth = getattr(args, "depth", "normal")
+    _info(f"Generating variants [depth={depth}]...")
+    count = _write_output(gen, args.output)
+    _ok(f"Generated: {count:,} candidates from {dna.n} password DNA(s)")
+
+
 def cmd_combiner(args: argparse.Namespace) -> None:
     """Handler for keyword combiner wordlist generation."""
     from wfh_modules.combiner import handle_combiner
@@ -2174,6 +2195,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="Output model file (default: .model/pattern_model.json)",
     )
 
+    # ── password-dna ───────────────────────────────────────────────────────
+    p_dna = sub.add_parser(
+        "password-dna",
+        help="Analyze password patterns and generate behavioral variants",
+        description=(
+            "Analyze 1-10 known passwords from a target to extract behavioral DNA:\n"
+            "structural patterns, word banks, separator habits, number placement,\n"
+            "capitalization style, and leet preferences. Then generate a wordlist\n"
+            "of candidates matching the same behavioral profile.\n\n"
+            "Minimum: 1 password. Ideal: 3+ passwords. Maximum: 10.\n\n"
+            "Examples:\n"
+            '  wfh.py password-dna "Empresa@2024" "empresa#2025" "Empresa!123"\n'
+            '  wfh.py password-dna --file known_passwords.txt --depth deep -o candidates.lst\n'
+            '  wfh.py password-dna "P@ssw0rd1" --depth quick --show-dna\n'
+            '  wfh.py password-dna "JoaoSilva99" "joao.silva@2024" "Silva#joao1"'
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_dna.add_argument("passwords", nargs="*",
+                        help="Known target passwords (1-10)")
+    p_dna.add_argument("--file", metavar="FILE",
+                        help="File with known passwords (one per line, max 10)")
+    p_dna.add_argument("--depth", choices=["quick", "normal", "deep"],
+                        default="normal",
+                        help="Generation depth: quick (~2K), normal (~15K), deep (~100K+)")
+    p_dna.add_argument("--show-dna", dest="show_dna", action="store_true",
+                        help="Print the extracted DNA profile before generating")
+    p_dna.add_argument("-o", "--output", help="Output file")
+
     # ── combiner ──────────────────────────────────────────────────────────
     p_cb = sub.add_parser(
         "combiner",
@@ -2551,6 +2601,7 @@ def main() -> None:
         "mangle":        cmd_mangle,
         "default-creds": cmd_default_creds,
         "isp-keygen":    cmd_isp_keygen,
+        "password-dna":  cmd_password_dna,
         "combiner":      cmd_combiner,
     }
 
