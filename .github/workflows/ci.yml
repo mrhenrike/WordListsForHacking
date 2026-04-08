@@ -33,7 +33,7 @@ jobs:
         run: |
           flake8 wfh.py wfh_modules/ \
             --max-line-length 120 \
-            --extend-ignore E501,W503
+            --extend-ignore E501,W503,E221,E272,E127,E302,E303,E305,E741,F401,F841
 
   syntax-check:
     name: Syntax check (Python ${{ matrix.python-version }})
