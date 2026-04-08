@@ -12,7 +12,7 @@
 <h1 align="center">WordListsForHacking</h1>
 
 <p align="center">
-  <a href="https://github.com/mrhenrike/WordListsForHacking/releases"><img src="https://img.shields.io/badge/version-2.1.1-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/mrhenrike/WordListsForHacking/releases"><img src="https://img.shields.io/badge/version-2.1.2-blue?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.8%2B-yellow?style=flat-square" alt="Python"></a>
   <a href="https://github.com/mrhenrike/WordListsForHacking"><img src="https://img.shields.io/badge/platform-linux%20%7C%20windows%20%7C%20macos%20%7C%20termux-lightgrey?style=flat-square" alt="Platform"></a>
@@ -30,7 +30,7 @@
 ---
 
 > **Autor:** André Henrique ([@mrhenrike](https://github.com/mrhenrike))  
-> **Versão:** 2.1.1 · **Licença:** MIT · **Python:** 3.8+
+> **Versão:** 2.1.2 · **Licença:** MIT · **Python:** 3.8+
 
 ---
 
@@ -173,7 +173,7 @@ WordListsForHacking/
 │   └── username_br.lst          # Usernames brasileiros e globais (~1.1K entradas)
 │
 ├── passwords/                   # Listas de senhas consolidadas + geradas
-│   ├── wlist_brasil.lst         # Senhas brasileiras (~1.70M entradas únicas)
+│   ├── wlist_brasil.lst         # Senhas brasileiras (~3.88M entradas únicas)
 │   └── default-creds-combo.lst  # Credenciais-padrão user:password (~2.4K)
 │
 ├── generated/                   # Saída do wfh.py (gitignored)
@@ -245,7 +245,7 @@ WordListsForHacking/
 
 | Arquivo | Tipo | Entradas | Finalidade |
 |---------|------|----------|------------|
-| `wlist_brasil.lst` | Senhas | ~1.70M | Corpus de senhas brasileiras inteiramente gerado pela ferramenta WFH usando bancos de palavras culturais, permutações leet speak, keyboard walks e dicionário português. Todos os entries são padrões gerados pelo programa. Sanitizado, deduplicado, min 5 chars. |
+| `wlist_brasil.lst` | Senhas | ~3.88M | Corpus de senhas brasileiras gerado pela ferramenta WFH usando bancos de palavras culturais, padrões corporativos, permutações leet speak, keyboard walks e dicionário português. Nomes de empresas e CNPJs são dados públicos obtidos via OSINT. Sanitizado, deduplicado, min 5 chars. |
 | `default-creds-combo.lst` | `user:password` | ~2.440 | Credenciais-padrão para 200+ fabricantes de dispositivos/software |
 
 ### `generated/` — Saída do wfh.py
@@ -1015,7 +1015,7 @@ Este projeto foi inspirado e referencia as seguintes ferramentas e projetos:
 
 ## Wordlist Brasileira (wlist_brasil.lst)
 
-O arquivo `passwords/wlist_brasil.lst` é um corpus de senhas brasileiras com **~1.70 milhão de entradas únicas**, inteiramente gerado pela ferramenta WFH usando seus módulos de padrão, perfil, charset, leet speak e bancos de palavras culturais.
+O arquivo `passwords/wlist_brasil.lst` é o maior corpus curado de senhas brasileiras disponível, com **~3.88 milhões de entradas únicas**, gerado pela ferramenta WFH usando seus módulos de padrão, perfil, charset, leet speak, padrões corporativos e bancos de palavras culturais. Nomes de empresas e CNPJs incluídos são dados públicos obtidos via OSINT (Receita Federal, bases públicas).
 
 ### Como Foi Construída
 
@@ -1024,16 +1024,17 @@ O arquivo `passwords/wlist_brasil.lst` é um corpus de senhas brasileiras com **
 | **Bancos de Palavras** | Dicionário português, nomes brasileiros, clubes de futebol, termos religiosos, gírias regionais — todos de `data/behavior_patterns.json` |
 | **Leet Speak** | Substituições sistemáticas (a→@, e→3, o→0, s→$, etc.) aplicadas a palavras em português |
 | **Keyboard Walks** | Padrões de caminhada de teclado ABNT2/QWERTY comuns no Brasil |
-| **Geração por Padrão** | Templates como `{nome}{ano}`, `{palavra}{separador}{número}`, etc. |
+| **Padrões Corporativos** | Padrões de credenciais corporativas brasileiras — nomes de empresas e CNPJs são dados públicos (Receita Federal / OSINT) |
+| **Geração por Padrão** | Templates como `{empresa}{sep}{código}`, `{nome}{ano}`, `{palavra}{separador}{número}`, etc. |
 | **ML-Ranked** | Modelo ML do WFH ranqueia entradas por probabilidade de padrão estrutural |
 
 ### Regras de Sanitização Aplicadas
 
 - Mínimo 5 caracteres
-- Sem nomes de empresas, marcas ou dados corporativos identificáveis
-- Sem PII real, CNPJs, CPFs ou endereços de e-mail
-- Sem entradas de bancos de dados de leak/breach externos
+- Entradas puramente numéricas removidas (exceto padrões CPF/CNPJ)
+- Separadores de formatação removidos de padrões CPF/CNPJ
 - Totalmente deduplicado
+- Nomes de empresas e CNPJs são dados públicos (Receita Federal, OSINT público)
 - Todas as entradas são reproduzíveis pelos módulos de geração do WFH
 
 ---
