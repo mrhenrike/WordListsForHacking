@@ -12,7 +12,7 @@
 <h1 align="center">WordListsForHacking</h1>
 
 <p align="center">
-  <a href="https://github.com/mrhenrike/WordListsForHacking/releases"><img src="https://img.shields.io/badge/version-2.1.2-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/mrhenrike/WordListsForHacking/releases"><img src="https://img.shields.io/badge/version-2.2.0-blue?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.8%2B-yellow?style=flat-square" alt="Python"></a>
   <a href="https://github.com/mrhenrike/WordListsForHacking"><img src="https://img.shields.io/badge/platform-linux%20%7C%20windows%20%7C%20macos%20%7C%20termux-lightgrey?style=flat-square" alt="Platform"></a>
@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  Toolkit unificado de geração de wordlists para pentest autorizado, red team e treinamentos de segurança.
+  Toolkit unificado de geração de wordlists para pentest autorizado, red team e treinamentos de segurança. Inclui scraping web com extração JS/CSS/PDF, base de credenciais default (IoT/routers/impressoras/ICS), gerador de keyspace ISP e treino ML com corpus SecLists.
 </p>
 
 <p align="center">
@@ -30,7 +30,7 @@
 ---
 
 > **Autor:** André Henrique ([@mrhenrike](https://github.com/mrhenrike))
-> **Versão:** 2.1.2 · **Licença:** MIT · **Python:** 3.8+
+> **Versão:** 2.2.0 · **Licença:** MIT · **Python:** 3.8+
 
 > **Documentação completa:** [Wiki](https://github.com/mrhenrike/WordListsForHacking/wiki)
 
@@ -86,7 +86,7 @@ python wfh.py --help       # ajuda completa da CLI
 | 4 | `corp` | Profiling corporativo |
 | 5 | `corp-users` | Geração de users/senhas corporativos (50+ padrões) |
 | 6 | `phone` | Wordlists de telefone (BR, US, UK) |
-| 7 | `scrape` | Web scraping (estilo CeWL) |
+| 7 | `scrape` | Web scraping (estilo CeWL/CeWLeR) com extração JS/CSS/PDF |
 | 8 | `ocr` | Extração OCR de imagens |
 | 9 | `extract` | Extração de PDF/XLSX/DOCX |
 | 10 | `leet` | Permutações leet speak |
@@ -98,8 +98,11 @@ python wfh.py --help       # ajuda completa da CLI
 | 16 | `sanitize` | Limpeza e normalização |
 | 17 | `reverse` | Inversão de linhas |
 | 18 | `corp-prefixes` | Prefixos corporativos (MSP/SOC/DevOps) |
-| 19 | `train` | Treinar modelo ML |
+| 19 | `train` | Treinar modelo ML (local + corpus SecLists) |
 | 20 | `sysinfo` | Info de hardware e compute |
+| 21 | `mangle` | Regras de word mangling |
+| 22 | `default-creds` | Consulta base de credenciais default (IoT/routers/impressoras/ICS) |
+| 23 | `isp-keygen` | Gerador de keyspace WiFi padrão de ISPs |
 
 > **Sintaxe detalhada e exemplos de cada subcomando:** [Wiki — Subcomandos](https://github.com/mrhenrike/WordListsForHacking/wiki)
 
@@ -156,6 +159,30 @@ python wfh.py dns -d acme.com.br --words dev staging api admin portal -o subdoma
 python wfh.py analyze senhas.lst --top 30 --masks --format json -o analise.json
 ```
 
+### Consultar credenciais default
+
+```bash
+python wfh.py default-creds --list-vendors
+python wfh.py default-creds --vendor mikrotik --format combo -o mikrotik_creds.lst
+python wfh.py default-creds --protocol snmp --format user -o snmp_users.lst
+```
+
+### Geração de keyspace WiFi ISP
+
+```bash
+python wfh.py isp-keygen --list
+python wfh.py isp-keygen --isp xfinity_comcast --estimate
+python wfh.py isp-keygen --isp xfinity_comcast --limit 100000 -o xfinity.lst
+```
+
+### Web scraping com JS/CSS/PDF
+
+```bash
+python wfh.py scrape https://alvo.com --include-js --include-css --include-pdf --lowercase -o palavras.lst
+python wfh.py scrape https://alvo.com --emails --output-emails emails.txt --output-urls urls.txt
+python wfh.py scrape https://alvo.com --subdomain-strategy children --stream -o stream.lst
+```
+
 ### Merge e sanitização
 
 ```bash
@@ -172,7 +199,9 @@ python wfh.py sanitize merged.lst --inplace
 | Arquivo | Descrição | Entradas |
 |---------|-----------|----------|
 | `passwords/wlist_brasil.lst` | Corpus brasileiro de senhas — bancos culturais, padrões corporativos, leet speak, keyboard walks. Nomes de empresas e CNPJs são dados públicos (OSINT). | ~3.88M |
-| `passwords/default-creds-combo.lst` | Credenciais-padrão user:password | ~2.4K |
+| `passwords/default-creds-combo.lst` | Credenciais-padrão user:password (routers, impressoras, ICS/SCADA) | ~3K |
+| `data/default_credentials.json` | Base estruturada de credenciais default (1.329 entradas, 88 vendors, 14 protocolos) | — |
+| `fuzzing/discovery_br.lst` | Paths de descoberta web e API fuzzing brasileiros | ~900 |
 | `usernames/username_br.lst` | Usernames brasileiros e globais | ~1.6K |
 | `labs/*.lst` | Wordlists para workshops e treinamentos | — |
 
@@ -198,7 +227,16 @@ Se encontrada: **troque imediatamente**, habilite MFA/2FA, use um gerenciador de
 
 ## Modelo ML
 
-O WFH inclui um modelo ML leve que ranqueia candidatos gerados por probabilidade de padrão estrutural. Treine com `python wfh.py train --auto`. O modelo armazena **apenas padrões estruturais** — sem PII, senhas ou nomes de empresa.
+O WFH inclui um modelo ML leve que ranqueia candidatos gerados por probabilidade de padrão estrutural. Treine com dados locais ou com o corpus SecLists:
+
+```bash
+python wfh.py train --auto                    # apenas wordlists locais
+python wfh.py train --seclists                # corpus SecLists (auto-discover)
+python wfh.py train --auto --seclists         # combinado (recomendado)
+python wfh.py train --seclists /path/to/SecLists --seclists-categories password frequency
+```
+
+O modelo armazena **apenas padrões estruturais** — sem PII, senhas ou nomes de empresa.
 
 > **Detalhes:** [Wiki — ML Model](https://github.com/mrhenrike/WordListsForHacking/wiki/ML-Model)
 
@@ -219,6 +257,8 @@ Se uma senha pertencente a você ou sua organização aparece nesta wordlist, is
 | [CUPP](https://github.com/Mebus/cupp) | Profiling pessoal |
 | [Crunch](https://github.com/jim3ma/crunch) | Geração por charset |
 | [CeWL](https://github.com/digininja/CeWL) | Web scraping |
+| [CeWLeR](https://github.com/roys/cewler) | Web scraping moderno em Python (JS/CSS/PDF) |
+| [routersploit](https://github.com/threat9/routersploit) | Credenciais default IoT/routers |
 | [alterx](https://github.com/projectdiscovery/alterx) | DNS/subdomain fuzzing |
 | [pipal](https://github.com/digininja/pipal) | Análise estatística |
 | [SecLists](https://github.com/danielmiessler/SecLists) | Listas curadas |
