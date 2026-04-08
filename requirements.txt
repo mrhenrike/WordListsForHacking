@@ -17,6 +17,9 @@ pdfplumber>=0.10.0
 python-docx>=1.1.0
 striprtf>=0.0.26
 
+# ── Web scrape extras (optional: pip install wfh-wordlist[scrape]) ──────────
+# pypdf>=4.0.0       # PDF text extraction during crawl (--include-pdf)
+
 # ── OCR / image processing (optional: pip install wfh-wordlist[ocr]) ────────
 # easyocr>=1.7.0      # Requires PyTorch — heavy dependency, install manually
 # Pillow>=10.0.0      # Installed as easyocr dependency
