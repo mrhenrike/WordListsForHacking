@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wfh-wordlist"
-version = "2.4.0"
+version = "2.5.0"
 description = "WordList For Hacking — Unified wordlist generation toolkit for pentest and red team operations"
 readme = "README.md"
 license = "MIT"
@@ -21,6 +21,7 @@ keywords = [
     "osint", "credential", "offensive-security",
     "ics", "scada", "plc", "hmi", "iot",
     "dns-fuzzing", "password-dna", "default-credentials", "web-scraping",
+    "pcfg", "markov", "keyboard-walk", "hashcat-rules", "prince-attack", "benchmark",
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",

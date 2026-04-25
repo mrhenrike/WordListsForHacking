@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/pypi/v/wfh-wordlist?style=flat-square&logo=pypi&logoColor=white&color=green" alt="PyPI">
 </p>
 
-**Unified wordlist generation toolkit for pentest and red team operations — 25 subcommands in a single CLI.** Charset/mask generation, personal & corporate target profiling, web scraping (JS/CSS/PDF extraction), OCR, document parsing (PDF/XLSX/DOCX), leet speak permutations, XOR crypto, DNS/subdomain fuzzing, phone number generation, corporate user enumeration, healthcare/pharma patterns, default credential databases (IoT/ICS/SCADA/PLC/HMI), ISP WiFi keyspace generation, password-DNA behavioral analysis, keyword combiner, word mangling, merge & sanitize, ML-based ranking with SecLists corpus training, and statistical analysis.
+**Unified wordlist generation toolkit for pentest and red team operations — 31 subcommands in a single CLI.** Charset/mask generation, personal & corporate target profiling, web scraping (JS/CSS/PDF extraction), OCR, document parsing (PDF/XLSX/DOCX), leet speak permutations, XOR crypto, DNS/subdomain fuzzing, phone number generation, corporate user enumeration, healthcare/pharma patterns, default credential databases (IoT/ICS/SCADA/PLC/HMI), ISP WiFi keyspace generation, password-DNA behavioral analysis, keyword combiner, word mangling, merge & sanitize, ML-based ranking with SecLists corpus training, statistical analysis, **PCFG probabilistic grammar generation, OMEN-style Markov chain generation, keyboard walk generation, automatic hashcat rule generation, PRINCE combinatorial chaining, and wordlist quality benchmarking.**
 
 > **Full documentation:** [Wiki](https://github.com/mrhenrike/WordListsForHacking/wiki)
 
@@ -91,6 +91,12 @@ python wfh.py --help       # full CLI help
 | 23 | `isp-keygen` | ISP default WiFi password keyspace generator |
 | 24 | `combiner` | Keyword combiner (intelligence-wordlist-generator style) |
 | 25 | `password-dna` | Analyze password patterns and generate behavioral variants |
+| 26 | `pcfg` | PCFG probabilistic grammar — train and generate (Weir et al.) |
+| 27 | `markov` | OMEN-style positional Markov chain generator |
+| 28 | `kwalk` | Keyboard walk password generator (kwprocessor-style) |
+| 29 | `rulegen` | Auto-generate hashcat .rule files from password analysis |
+| 30 | `benchmark` | Wordlist quality benchmarking (MAYA-inspired metrics) |
+| 31 | `prince` | PRINCE attack — chained element combination |
 
 > **Detailed syntax and examples for each subcommand:** [Wiki — Subcommands](https://github.com/mrhenrike/WordListsForHacking/wiki)
 
@@ -199,6 +205,86 @@ python wfh.py password-dna --input known_passwords.lst --analyze-only --format j
 
 ---
 
+## PCFG Grammar Engine
+
+Train a Probabilistic Context-Free Grammar from a password corpus and generate candidates in **probability order** (most likely first). Based on Weir et al. (IEEE S&P 2009).
+
+```bash
+# Train a grammar from a password corpus
+python wfh.py pcfg train --wordlist rockyou.txt
+
+# Generate candidates (probability-ordered)
+python wfh.py pcfg generate -o candidates.lst --limit 1000000
+
+# Fine-tune with structure/terminal limits
+python wfh.py pcfg generate --top-structures 50 --top-terminals 100 --min-len 8
+```
+
+## Markov Chain Generator
+
+OMEN-style positional Markov chain generator. Learns per-position character transitions and generates in ascending cost order (most probable first).
+
+```bash
+# Train a Markov model (order 3)
+python wfh.py markov train --wordlist leaked.txt --order 3
+
+# Generate candidates with cost threshold
+python wfh.py markov generate --min-len 6 --max-len 12 --max-cost 30 --limit 500000
+```
+
+## Keyboard Walk Generator
+
+Generate passwords based on physical keyboard adjacency walks. Supports QWERTY, AZERTY, QWERTZ, Dvorak, and numpad layouts.
+
+```bash
+# Generate QWERTY walks (length 4-10)
+python wfh.py kwalk --min-len 4 --max-len 10 -o walks.lst
+
+# Multiple layouts, no shift layer
+python wfh.py kwalk --layout qwerty,numpad --no-shift --max-changes 2
+
+# List available layouts
+python wfh.py kwalk --list-layouts
+```
+
+## Hashcat Rule Auto-Generation
+
+Analyze real passwords and automatically generate hashcat-compatible `.rule` files by reverse-engineering transformation patterns.
+
+```bash
+# Generate a .rule file from password analysis
+python wfh.py rulegen --wordlist leaked.txt -o rules.rule --top-rules 200
+
+# With a dictionary for better base-word matching
+python wfh.py rulegen --wordlist passwords.lst --dictionary english.txt -o optimized.rule
+```
+
+## PRINCE Attack Mode
+
+PRINCE (PRobability INfinite Chained Elements) generates passwords by combining multiple words from a wordlist. Discovers multi-word passwords like `correcthorsebatterystaple`.
+
+```bash
+# Chain 2-4 elements from a base wordlist
+python wfh.py prince --wordlist top1000.txt --min-elem 2 --max-elem 4 -o prince.lst
+
+# With separator and case permutations
+python wfh.py prince --wordlist words.txt --separator "-" --case-permute --min-len 8
+```
+
+## Wordlist Quality Benchmark
+
+Measure the effectiveness of a generated wordlist against a reference set. Reports hit rate, efficiency, diversity, coverage by length/charset, and estimated crack times.
+
+```bash
+# Benchmark a wordlist against a known password set
+python wfh.py benchmark --wordlist generated.lst --reference rockyou_sample.txt
+
+# Save JSON report
+python wfh.py benchmark --wordlist output.lst --reference test_set.txt --json report.json
+```
+
+---
+
 ## Default Credentials Database
 
 Query the built-in database of 1,329+ factory-default credentials covering 88 vendors and 14 protocols — routers, switches, printers, IP cameras, ICS/SCADA (PLCs, HMIs, RTUs), IoT gateways, and more.
@@ -287,6 +373,12 @@ The model stores **only structural patterns** — no PII, passwords, or company 
 | [pnwgen](https://github.com/toxydose/pnwgen) | Phone number generation |
 | [intelligence-wordlist-generator](https://github.com/MichaelDim02/intelligence-wordlist-generator) | Keyword combiner |
 | [SCaDAPass](https://github.com/scadastrangelove/SCaDAPass) | ICS/SCADA default credentials |
+| [pcfg_cracker](https://github.com/lakiw/pcfg_cracker) | PCFG probabilistic grammar (Weir et al.) |
+| [OMEN](https://github.com/RUB-SysSec/OMEN) | Ordered Markov ENumerator |
+| [kwprocessor](https://github.com/hashcat/kwprocessor) | Keyboard walk generation |
+| [PACK](https://github.com/iphelix/pack) | Password Analysis and Cracking Kit (rulegen) |
+| [princeprocessor](https://github.com/hashcat/princeprocessor) | PRINCE attack mode |
+| [MAYA](https://github.com/williamcorrias/MAYA-Password-Benchmarking) | Wordlist quality benchmarking framework |
 
 ---
 
