@@ -83,7 +83,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "2.4.0"
+VERSION = "2.5.0"
 
 # ── Graceful shutdown ──────────────────────────────────────────────────────────
 _SHUTDOWN_REQUESTED = False
@@ -1247,6 +1247,94 @@ def cmd_combiner(args: argparse.Namespace) -> None:
         _ok(f"Generated: {count:,} combined entries")
 
 
+def cmd_pcfg(args: argparse.Namespace) -> None:
+    """Handler for PCFG grammar training and generation."""
+    from wfh_modules.pcfg_engine import handle_pcfg
+    gen = handle_pcfg(args, _GLOBAL_CTX)
+    if gen:
+        action = getattr(args, "pcfg_action", "generate")
+        if action == "train":
+            for line in gen:
+                print(line)
+        else:
+            count = _write_output(
+                gen, args.output,
+                min_len=getattr(args, "min_len", 1),
+                max_len=getattr(args, "max_len", 64),
+            )
+            _ok(f"PCFG generated: {count:,} candidates (probability-ordered)")
+
+
+def cmd_markov(args: argparse.Namespace) -> None:
+    """Handler for Markov model training and generation."""
+    from wfh_modules.markov_engine import handle_markov
+    gen = handle_markov(args, _GLOBAL_CTX)
+    if gen:
+        action = getattr(args, "markov_action", "generate")
+        if action == "train":
+            for line in gen:
+                print(line)
+        else:
+            count = _write_output(
+                gen, args.output,
+                min_len=getattr(args, "min_len", 4),
+                max_len=getattr(args, "max_len", 16),
+            )
+            _ok(f"Markov generated: {count:,} candidates (cost-ordered)")
+
+
+def cmd_kwalk(args: argparse.Namespace) -> None:
+    """Handler for keyboard walk generation."""
+    from wfh_modules.kwalk_gen import handle_kwalk
+    gen = handle_kwalk(args, _GLOBAL_CTX)
+    if gen:
+        if getattr(args, "list_layouts", False):
+            for line in gen:
+                print(line)
+        else:
+            count = _write_output(gen, args.output)
+            _ok(f"Keyboard walks generated: {count:,} candidates")
+
+
+def cmd_rulegen(args: argparse.Namespace) -> None:
+    """Handler for hashcat rule auto-generation."""
+    from wfh_modules.rulegen_engine import handle_rulegen
+    gen = handle_rulegen(args, _GLOBAL_CTX)
+    if gen:
+        output = getattr(args, "output", None)
+        if output and output.endswith(".rule"):
+            for line in gen:
+                print(line)
+        else:
+            count = _write_output(gen, output)
+            _ok(f"Rules generated: {count:,} hashcat-compatible rules")
+
+
+def cmd_benchmark(args: argparse.Namespace) -> None:
+    """Handler for wordlist quality benchmarking."""
+    from wfh_modules.benchmark_suite import handle_benchmark
+    gen = handle_benchmark(args, _GLOBAL_CTX)
+    if gen:
+        output = getattr(args, "output", None)
+        if output:
+            with open(output, "w", encoding="utf-8") as fh:
+                for line in gen:
+                    fh.write(line + "\n")
+            _ok(f"Benchmark report saved: {output}")
+        else:
+            for line in gen:
+                print(line)
+
+
+def cmd_prince(args: argparse.Namespace) -> None:
+    """Handler for PRINCE attack mode."""
+    from wfh_modules.prince_engine import handle_prince
+    gen = handle_prince(args, _GLOBAL_CTX)
+    if gen:
+        count = _write_output(gen, args.output)
+        _ok(f"PRINCE generated: {count:,} chained candidates")
+
+
 def cmd_mangle(args: argparse.Namespace) -> None:
     """Handler for hashcat-style mangling rules on wordlists."""
     from wfh_modules.mangler import apply_rules, BUILTIN_RULES
@@ -2261,6 +2349,202 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Maximum output length (default: 64)")
     p_cb.add_argument("-o", "--output", help="Output file")
 
+    # ── pcfg ─────────────────────────────────────────────────────────────
+    p_pcfg = sub.add_parser(
+        "pcfg",
+        help="PCFG probabilistic grammar — train or generate",
+        description=(
+            "Probabilistic Context-Free Grammar engine (Weir et al.).\n"
+            "Train a grammar from password corpora, then generate candidates\n"
+            "in approximate probability order (most likely first).\n\n"
+            "Examples:\n"
+            "  wfh.py pcfg train --wordlist rockyou.txt\n"
+            "  wfh.py pcfg generate -o candidates.lst\n"
+            "  wfh.py pcfg generate --top-structures 50 --top-terminals 100 --limit 1000000\n"
+            "  wfh.py pcfg generate --model .model/pcfg_grammar.json --min-len 8"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_pcfg.add_argument("pcfg_action", choices=["train", "generate"], default="generate",
+                         nargs="?", help="Action: train or generate (default: generate)")
+    p_pcfg.add_argument("--wordlist", nargs="+", metavar="FILE",
+                         help="Training file(s) — one password per line")
+    p_pcfg.add_argument("--model", metavar="FILE", default=".model/pcfg_grammar.json",
+                         help="Grammar model file (default: .model/pcfg_grammar.json)")
+    p_pcfg.add_argument("--model-output", dest="model_output", metavar="FILE",
+                         help="Output path for trained model")
+    p_pcfg.add_argument("--max-lines", dest="max_lines", type=int, default=0,
+                         help="Max training lines (0 = unlimited)")
+    p_pcfg.add_argument("--top-structures", dest="top_structures", type=int, default=0,
+                         help="Limit to top N structures (0 = all)")
+    p_pcfg.add_argument("--top-terminals", dest="top_terminals", type=int, default=0,
+                         help="Limit terminals per class to top N (0 = all)")
+    p_pcfg.add_argument("--min-len", dest="min_len", type=int, default=1,
+                         help="Min password length (default: 1)")
+    p_pcfg.add_argument("--max-len", dest="max_len", type=int, default=64,
+                         help="Max password length (default: 64)")
+    p_pcfg.add_argument("--limit", type=int, default=0,
+                         help="Max candidates to generate (0 = unlimited)")
+    p_pcfg.add_argument("-o", "--output", help="Output file")
+
+    # ── markov ───────────────────────────────────────────────────────────
+    p_mk = sub.add_parser(
+        "markov",
+        help="OMEN-style positional Markov generator — train or generate",
+        description=(
+            "Positional Markov chain password generator (OMEN-style).\n"
+            "Learns character transition probabilities per position and\n"
+            "generates candidates in ascending cost order.\n\n"
+            "Examples:\n"
+            "  wfh.py markov train --wordlist rockyou.txt --order 4\n"
+            "  wfh.py markov generate --limit 500000\n"
+            "  wfh.py markov generate --min-len 8 --max-len 12 --max-cost 30"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_mk.add_argument("markov_action", choices=["train", "generate"], default="generate",
+                       nargs="?", help="Action: train or generate (default: generate)")
+    p_mk.add_argument("--wordlist", nargs="+", metavar="FILE",
+                       help="Training file(s)")
+    p_mk.add_argument("--model", metavar="FILE", default=".model/markov_model.json",
+                       help="Model file (default: .model/markov_model.json)")
+    p_mk.add_argument("--model-output", dest="model_output", metavar="FILE",
+                       help="Output path for trained model")
+    p_mk.add_argument("--order", type=int, default=3,
+                       help="N-gram order (default: 3)")
+    p_mk.add_argument("--max-lines", dest="max_lines", type=int, default=0,
+                       help="Max training lines (0 = unlimited)")
+    p_mk.add_argument("--max-cost", dest="max_cost", type=int, default=0,
+                       help="Max total cost threshold (0 = no limit)")
+    p_mk.add_argument("--min-len", dest="min_len", type=int, default=4,
+                       help="Min password length (default: 4)")
+    p_mk.add_argument("--max-len", dest="max_len", type=int, default=16,
+                       help="Max password length (default: 16)")
+    p_mk.add_argument("--limit", type=int, default=0,
+                       help="Max candidates (0 = unlimited)")
+    p_mk.add_argument("-o", "--output", help="Output file")
+
+    # ── kwalk ────────────────────────────────────────────────────────────
+    p_kw = sub.add_parser(
+        "kwalk",
+        help="Keyboard walk password generator (kwprocessor-style)",
+        description=(
+            "Generate passwords based on physical keyboard adjacency walks.\n"
+            "Supports QWERTY, AZERTY, QWERTZ, Dvorak, and numpad layouts.\n\n"
+            "Examples:\n"
+            "  wfh.py kwalk --min-len 6 --max-len 10\n"
+            "  wfh.py kwalk --layout qwerty,numpad --no-shift\n"
+            "  wfh.py kwalk --max-changes 2 --start-chars qaz1\n"
+            "  wfh.py kwalk --list-layouts"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_kw.add_argument("--layout", default="qwerty",
+                       help="Comma-separated layout names (default: qwerty)")
+    p_kw.add_argument("--min-len", dest="min_len", type=int, default=4,
+                       help="Min walk length (default: 4)")
+    p_kw.add_argument("--max-len", dest="max_len", type=int, default=10,
+                       help="Max walk length (default: 10)")
+    p_kw.add_argument("--max-changes", dest="max_changes", type=int, default=3,
+                       help="Max direction changes per walk (default: 3)")
+    p_kw.add_argument("--directions", metavar="LIST",
+                       help="Comma-separated directions: N,S,E,W,NE,NW,SE,SW")
+    p_kw.add_argument("--no-shift", dest="no_shift", action="store_true",
+                       help="Exclude shifted layer (uppercase/symbols)")
+    p_kw.add_argument("--start-chars", dest="start_chars", metavar="CHARS",
+                       help="Restrict starting characters")
+    p_kw.add_argument("--list-layouts", dest="list_layouts", action="store_true",
+                       help="List available keyboard layouts")
+    p_kw.add_argument("--limit", type=int, default=0,
+                       help="Max candidates (0 = unlimited)")
+    p_kw.add_argument("-o", "--output", help="Output file")
+
+    # ── rulegen ──────────────────────────────────────────────────────────
+    p_rg = sub.add_parser(
+        "rulegen",
+        help="Auto-generate hashcat .rule files from password analysis",
+        description=(
+            "Analyze real passwords to discover transformation rules\n"
+            "and generate hashcat-compatible .rule files.\n\n"
+            "Examples:\n"
+            "  wfh.py rulegen --wordlist leaked.txt -o rules.rule\n"
+            "  wfh.py rulegen --wordlist passwords.lst --dictionary english.txt --top-rules 200\n"
+            "  wfh.py rulegen --wordlist hashes.pot --max-lines 100000"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_rg.add_argument("--wordlist", nargs="+", metavar="FILE",
+                       help="Password file(s) to analyze")
+    p_rg.add_argument("--dictionary", metavar="FILE",
+                       help="Optional base word dictionary for matching")
+    p_rg.add_argument("--top-rules", dest="top_rules", type=int, default=100,
+                       help="Number of top rules to output (default: 100)")
+    p_rg.add_argument("--max-lines", dest="max_lines", type=int, default=0,
+                       help="Max passwords to analyze (0 = all)")
+    p_rg.add_argument("-o", "--output", help="Output file (.rule for hashcat format)")
+
+    # ── benchmark ────────────────────────────────────────────────────────
+    p_bm = sub.add_parser(
+        "benchmark",
+        help="Measure wordlist quality against a reference set",
+        description=(
+            "Benchmark a generated wordlist against a reference password set.\n"
+            "Measures hit rate, coverage, efficiency, diversity, and more.\n"
+            "Inspired by MAYA (IEEE S&P 2026) benchmarking framework.\n\n"
+            "Examples:\n"
+            "  wfh.py benchmark --wordlist generated.lst --reference rockyou.txt\n"
+            "  wfh.py benchmark --wordlist out.lst --reference test_set.txt --json report.json\n"
+            "  wfh.py benchmark --wordlist my_list.lst --reference leaked.txt --max-candidates 1000000"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_bm.add_argument("--wordlist", required=True, metavar="FILE",
+                       help="Generated wordlist to evaluate")
+    p_bm.add_argument("--reference", required=True, metavar="FILE",
+                       help="Reference password set (ground truth)")
+    p_bm.add_argument("--max-candidates", dest="max_candidates", type=int, default=0,
+                       help="Max lines to read from wordlist (0 = all)")
+    p_bm.add_argument("--max-reference", dest="max_reference", type=int, default=0,
+                       help="Max lines to read from reference (0 = all)")
+    p_bm.add_argument("--json", dest="json_output", metavar="FILE",
+                       help="Save results as JSON report")
+    p_bm.add_argument("-o", "--output", help="Save text report to file")
+
+    # ── prince ───────────────────────────────────────────────────────────
+    p_pr = sub.add_parser(
+        "prince",
+        help="PRINCE attack — chained element combination",
+        description=(
+            "PRINCE (PRobability INfinite Chained Elements) attack mode.\n"
+            "Generates passwords by chaining elements from a wordlist.\n"
+            "Discovers multi-word passwords like 'correcthorsebatterystaple'.\n\n"
+            "Examples:\n"
+            "  wfh.py prince --wordlist base_words.txt --min-elem 2 --max-elem 4\n"
+            "  wfh.py prince --wordlist words.txt --separator '-' --case-permute\n"
+            "  wfh.py prince --wordlist top1000.txt --min-len 8 --max-len 20 --limit 500000"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_pr.add_argument("--wordlist", required=True, metavar="FILE",
+                       help="Input wordlist (element source)")
+    p_pr.add_argument("--min-len", dest="min_len", type=int, default=1,
+                       help="Min password length (default: 1)")
+    p_pr.add_argument("--max-len", dest="max_len", type=int, default=32,
+                       help="Max password length (default: 32)")
+    p_pr.add_argument("--min-elem", dest="min_elem", type=int, default=1,
+                       help="Min elements per chain (default: 1)")
+    p_pr.add_argument("--max-elem", dest="max_elem", type=int, default=4,
+                       help="Max elements per chain (default: 4)")
+    p_pr.add_argument("--separator", default="",
+                       help="Element separator (default: empty, use EMPTY for none)")
+    p_pr.add_argument("--case-permute", dest="case_permute", action="store_true",
+                       help="Generate case permutations")
+    p_pr.add_argument("--max-words", dest="max_words", type=int, default=0,
+                       help="Max words to load from file (0 = all)")
+    p_pr.add_argument("--limit", type=int, default=0,
+                       help="Max candidates (0 = unlimited)")
+    p_pr.add_argument("-o", "--output", help="Output file")
+
     return parser
 
 
@@ -2603,6 +2887,12 @@ def main() -> None:
         "isp-keygen":    cmd_isp_keygen,
         "password-dna":  cmd_password_dna,
         "combiner":      cmd_combiner,
+        "pcfg":          cmd_pcfg,
+        "markov":        cmd_markov,
+        "kwalk":         cmd_kwalk,
+        "rulegen":       cmd_rulegen,
+        "benchmark":     cmd_benchmark,
+        "prince":        cmd_prince,
     }
 
     handler = handlers.get(args.command)

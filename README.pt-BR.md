@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  Toolkit unificado de geração de wordlists para pentest autorizado, red team e treinamentos de segurança — 25 subcomandos em uma única CLI. Geração por charset/máscara, profiling pessoal e corporativo, scraping web (JS/CSS/PDF), OCR, parsing de documentos (PDF/XLSX/DOCX), leet speak, XOR crypto, DNS fuzzing, telefones, enumeração de usuários corporativos, padrões saúde/farmácia, base de credenciais default (IoT/ICS/SCADA/PLC/HMI), keyspace WiFi ISP, análise comportamental password-DNA, combinador de keywords, word mangling, merge e sanitização, ranking ML com corpus SecLists e análise estatística.
+  Toolkit unificado de geração de wordlists para pentest autorizado, red team e treinamentos de segurança — 31 subcomandos em uma única CLI. Geração por charset/máscara, profiling pessoal e corporativo, scraping web (JS/CSS/PDF), OCR, parsing de documentos (PDF/XLSX/DOCX), leet speak, XOR crypto, DNS fuzzing, telefones, enumeração de usuários corporativos, padrões saúde/farmácia, base de credenciais default (IoT/ICS/SCADA/PLC/HMI), keyspace WiFi ISP, análise comportamental password-DNA, combinador de keywords, word mangling, merge e sanitização, ranking ML com corpus SecLists, análise estatística, <strong>gramática probabilística PCFG, geração Markov OMEN-style, geração por keyboard walks, auto-geração de regras hashcat, ataque PRINCE combinatorial e benchmarking de qualidade de wordlists.</strong>
 </p>
 
 <p align="center">
@@ -57,7 +57,7 @@ pip install wfh-wordlist[full]         # todos os extras
 Verificar instalação:
 
 ```bash
-wfh --help                              # deve mostrar 25 subcomandos
+wfh --help                              # deve mostrar 31 subcomandos
 pip show wfh-wordlist                   # verificar versão
 ```
 
@@ -115,6 +115,12 @@ python wfh.py --help       # ajuda completa da CLI
 | 23 | `isp-keygen` | Gerador de keyspace WiFi padrão de ISPs |
 | 24 | `combiner` | Combinador de keywords (estilo intelligence-wordlist-generator) |
 | 25 | `password-dna` | Análise de padrões de senha e geração de variantes comportamentais |
+| 26 | `pcfg` | Gramática probabilística PCFG — treino e geração (Weir et al.) |
+| 27 | `markov` | Gerador Markov posicional estilo OMEN |
+| 28 | `kwalk` | Gerador de senhas por keyboard walk (estilo kwprocessor) |
+| 29 | `rulegen` | Auto-geração de arquivos .rule hashcat a partir de análise |
+| 30 | `benchmark` | Benchmarking de qualidade de wordlists (métricas MAYA) |
+| 31 | `prince` | Ataque PRINCE — combinação encadeada de elementos |
 
 > **Sintaxe detalhada e exemplos de cada subcomando:** [Wiki — Subcomandos](https://github.com/mrhenrike/WordListsForHacking/wiki)
 
@@ -223,6 +229,86 @@ python wfh.py password-dna --input senhas_conhecidas.lst --analyze-only --format
 
 ---
 
+## Motor PCFG (Gramática Probabilística)
+
+Treina uma gramática probabilística a partir de corpus de senhas e gera candidatos em **ordem de probabilidade** (mais provável primeiro). Baseado em Weir et al. (IEEE S&P 2009).
+
+```bash
+# Treinar gramática a partir de corpus
+python wfh.py pcfg train --wordlist rockyou.txt
+
+# Gerar candidatos (ordenados por probabilidade)
+python wfh.py pcfg generate -o candidatos.lst --limit 1000000
+
+# Ajuste fino com limites de estrutura/terminais
+python wfh.py pcfg generate --top-structures 50 --top-terminals 100 --min-len 8
+```
+
+## Gerador Markov (OMEN-style)
+
+Gerador de cadeia de Markov posicional estilo OMEN. Aprende transições de caracteres por posição e gera em ordem crescente de custo.
+
+```bash
+# Treinar modelo Markov (ordem 3)
+python wfh.py markov train --wordlist leaked.txt --order 3
+
+# Gerar com threshold de custo
+python wfh.py markov generate --min-len 6 --max-len 12 --max-cost 30 --limit 500000
+```
+
+## Gerador de Keyboard Walk
+
+Gera senhas baseadas em caminhadas de adjacência no teclado físico. Suporta layouts QWERTY, AZERTY, QWERTZ, Dvorak e numpad.
+
+```bash
+# Gerar walks QWERTY (comprimento 4-10)
+python wfh.py kwalk --min-len 4 --max-len 10 -o walks.lst
+
+# Múltiplos layouts, sem shift
+python wfh.py kwalk --layout qwerty,numpad --no-shift --max-changes 2
+
+# Listar layouts disponíveis
+python wfh.py kwalk --list-layouts
+```
+
+## Auto-Geração de Regras Hashcat
+
+Analisa senhas reais e gera automaticamente arquivos `.rule` compatíveis com hashcat extraindo padrões de transformação.
+
+```bash
+# Gerar arquivo .rule a partir de análise
+python wfh.py rulegen --wordlist leaked.txt -o rules.rule --top-rules 200
+
+# Com dicionário para melhor matching de base words
+python wfh.py rulegen --wordlist passwords.lst --dictionary english.txt -o optimized.rule
+```
+
+## Ataque PRINCE
+
+PRINCE (PRobability INfinite Chained Elements) gera senhas combinando múltiplas palavras de uma wordlist. Descobre senhas multi-word como `correcthorsebatterystaple`.
+
+```bash
+# Encadear 2-4 elementos de uma wordlist base
+python wfh.py prince --wordlist top1000.txt --min-elem 2 --max-elem 4 -o prince.lst
+
+# Com separador e permutações de case
+python wfh.py prince --wordlist words.txt --separator "-" --case-permute --min-len 8
+```
+
+## Benchmark de Qualidade de Wordlists
+
+Mede a eficácia de uma wordlist gerada contra um conjunto de referência. Reporta hit rate, eficiência, diversidade, cobertura por comprimento/charset e tempos estimados de crack.
+
+```bash
+# Benchmark contra um conjunto de senhas conhecido
+python wfh.py benchmark --wordlist gerada.lst --reference rockyou_sample.txt
+
+# Salvar relatório JSON
+python wfh.py benchmark --wordlist output.lst --reference test_set.txt --json relatorio.json
+```
+
+---
+
 ## Base de Credenciais Default
 
 Consulte a base integrada com 1.329+ credenciais de fábrica cobrindo 88 vendors e 14 protocolos — routers, switches, impressoras, câmeras IP, ICS/SCADA (PLCs, HMIs, RTUs), gateways IoT e mais.
@@ -319,6 +405,12 @@ Se uma senha pertencente a você ou sua organização aparece nesta wordlist, is
 | [pnwgen](https://github.com/toxydose/pnwgen) | Geração de telefones |
 | [intelligence-wordlist-generator](https://github.com/MichaelDim02/intelligence-wordlist-generator) | Combinador de keywords |
 | [SCaDAPass](https://github.com/scadastrangelove/SCaDAPass) | Credenciais default ICS/SCADA |
+| [pcfg_cracker](https://github.com/lakiw/pcfg_cracker) | Gramática probabilística PCFG (Weir et al.) |
+| [OMEN](https://github.com/RUB-SysSec/OMEN) | Ordered Markov ENumerator |
+| [kwprocessor](https://github.com/hashcat/kwprocessor) | Geração de keyboard walks |
+| [PACK](https://github.com/iphelix/pack) | Password Analysis and Cracking Kit (rulegen) |
+| [princeprocessor](https://github.com/hashcat/princeprocessor) | Modo de ataque PRINCE |
+| [MAYA](https://github.com/williamcorrias/MAYA-Password-Benchmarking) | Framework de benchmarking de wordlists |
 
 ---
 

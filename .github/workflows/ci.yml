@@ -152,7 +152,13 @@ jobs:
           import wfh_modules.seclists_trainer
           import wfh_modules.combiner
           import wfh_modules.password_dna
-          print('All 27 module imports OK')
+          import wfh_modules.pcfg_engine
+          import wfh_modules.markov_engine
+          import wfh_modules.kwalk_gen
+          import wfh_modules.rulegen_engine
+          import wfh_modules.benchmark_suite
+          import wfh_modules.prince_engine
+          print('All 33 module imports OK')
           "
 
   version-check:
