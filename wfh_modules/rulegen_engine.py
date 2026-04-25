@@ -274,7 +274,7 @@ def generate_rule_file(
     with out.open("w", encoding="utf-8") as fh:
         fh.write(f"# Auto-generated rules from {path.name}\n")
         fh.write(f"# Analyzed {len(passwords)} passwords, found {len(rule_counter)} unique rule chains\n")
-        fh.write(f"# Format: hashcat-compatible rule syntax\n\n")
+        fh.write("# Format: hashcat-compatible rule syntax\n\n")
         for rule_chain, freq in rule_counter.most_common(top_rules):
             fh.write(f"{rule_chain}\n")
             written += 1
