@@ -1,27 +1,29 @@
 """
-seclists_trainer.py — Auto-discovery and batch training from SecLists corpus.
+seclists_trainer.py - Auto-discovery and batch training from SecLists corpus.
 
 Locates a SecLists installation (local submodule or custom path),
 reads the corpus index (data/seclists_corpus.json), and feeds
 relevant files into the PatternModel via train_from_wordlist.
 
-Only structural patterns are extracted — no raw data is stored.
+Only structural patterns are extracted - no raw data is stored.
 
-Author: André Henrique (@mrhenrike)
-Version: 1.0.0
+Author: Andre Henrique (@mrhenrike) | Uniao Geek
+Version: 1.1.0
 """
 from __future__ import annotations
 
 import json
 import logging
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 _CORPUS_INDEX = Path(__file__).parent.parent / "data" / "seclists_corpus.json"
 
 _KNOWN_SECLISTS_RELATIVES = [
+    # Superproject layout: submodules/Wordlists/SecLists (relative to WFH root)
+    Path(__file__).parent.parent.parent.parent / "Wordlists" / "SecLists",
     Path(__file__).parent.parent.parent / "SecLists",
     Path(__file__).parent.parent / "SecLists",
 ]
@@ -29,6 +31,10 @@ _KNOWN_SECLISTS_RELATIVES = [
 
 def find_seclists_root(hint: Optional[str] = None) -> Optional[Path]:
     """Locate SecLists root directory.
+
+    Searches the provided hint path first, then known relative locations
+    in the superproject layout. A valid SecLists root must contain a
+    'Passwords' subdirectory with at least one file.
 
     Args:
         hint: Explicit path provided by the user (--seclists flag).
@@ -38,18 +44,81 @@ def find_seclists_root(hint: Optional[str] = None) -> Optional[Path]:
     """
     if hint:
         p = Path(hint)
-        if p.is_dir() and (p / "Passwords").is_dir():
+        if p.is_dir() and _has_passwords(p):
             return p
-        logger.warning("Provided SecLists path not valid: %s", hint)
+        logger.warning("Provided SecLists path not valid or empty: %s", hint)
         return None
 
     for candidate in _KNOWN_SECLISTS_RELATIVES:
         resolved = candidate.resolve()
-        if resolved.is_dir() and (resolved / "Passwords").is_dir():
+        if resolved.is_dir() and _has_passwords(resolved):
             logger.info("SecLists auto-discovered at: %s", resolved)
             return resolved
 
     return None
+
+
+def _has_passwords(root: Path) -> bool:
+    """Return True if root has a non-empty Passwords directory."""
+    pwd_dir = root / "Passwords"
+    if not pwd_dir.is_dir():
+        return False
+    return any(pwd_dir.iterdir())
+
+
+def diagnose_corpus(seclists_root: Optional[Path] = None) -> Dict[str, List[str]]:
+    """Report which corpus files are present and which are missing.
+
+    Useful for debugging incomplete SecLists checkouts. Prints a clear
+    summary of the corpus state without requiring a PatternModel.
+
+    Args:
+        seclists_root: Path to SecLists root. Auto-discovered if None.
+
+    Returns:
+        Dict with keys 'found', 'missing', 'seclists_root'.
+    """
+    root = seclists_root or find_seclists_root()
+    corpus = load_corpus_index()
+    result: Dict[str, List[str]] = {"found": [], "missing": [], "seclists_root": str(root) if root else "not found"}
+
+    if not root:
+        logger.warning(
+            "SecLists not found. Run: git submodule update --init submodules/Wordlists/SecLists\n"
+            "Or specify path: wfh train --seclists /path/to/SecLists"
+        )
+        all_sources = (
+            corpus.get("password_sources", [])
+            + corpus.get("username_sources", [])
+            + corpus.get("frequency_sources", [])
+        )
+        result["missing"] = [s["label"] for s in all_sources]
+        return result
+
+    all_sources = (
+        corpus.get("password_sources", [])
+        + corpus.get("username_sources", [])
+        + corpus.get("frequency_sources", [])
+    )
+
+    for src in all_sources:
+        fpath = root / src["path"]
+        if fpath.exists():
+            result["found"].append(src["label"])
+        else:
+            result["missing"].append(src["label"])
+            logger.debug("Corpus file missing: %s", fpath)
+
+    if result["missing"]:
+        logger.warning(
+            "%d corpus file(s) not found in SecLists. Run:\n"
+            "  git submodule update --init submodules/Wordlists/SecLists\n"
+            "Missing: %s",
+            len(result["missing"]),
+            ", ".join(result["missing"]),
+        )
+
+    return result
 
 
 def load_corpus_index() -> dict:
@@ -64,7 +133,7 @@ def load_corpus_index() -> dict:
 def train_from_seclists(
     model,
     seclists_root: Path,
-    categories: Optional[list[str]] = None,
+    categories: Optional[List[str]] = None,
     max_password_sources: int = 0,
     max_username_sources: int = 0,
 ) -> dict:
@@ -102,7 +171,7 @@ def train_from_seclists(
             fpath = seclists_root / src["path"]
             if not fpath.exists():
                 summary["skipped"].append(src["label"])
-                logger.debug("Skipped (not found): %s", fpath)
+                logger.debug("Corpus file not available: %s (run git submodule update --init submodules/Wordlists/SecLists)", fpath.relative_to(seclists_root) if seclists_root in fpath.parents else fpath)
                 continue
 
             max_lines = src.get("max_lines", 500_000)
@@ -126,7 +195,7 @@ def train_from_seclists(
             fpath = seclists_root / src["path"]
             if not fpath.exists():
                 summary["skipped"].append(src["label"])
-                logger.debug("Skipped (not found): %s", fpath)
+                logger.debug("Corpus file not available: %s (run git submodule update --init submodules/Wordlists/SecLists)", src["path"])
                 continue
 
             max_lines = src.get("max_lines", 200_000)
@@ -146,6 +215,7 @@ def train_from_seclists(
             fpath = seclists_root / src["path"]
             if not fpath.exists():
                 summary["skipped"].append(src["label"])
+                logger.debug("Corpus file not available: %s", src["path"])
                 continue
 
             fmt = src.get("format", "space_withcount")
@@ -202,6 +272,6 @@ def _train_withcount(model, fpath: Path, fmt: str, max_lines: int) -> int:
 
     if processed > 0:
         model._sources.append(
-            f"SecLists frequency: {fpath.name} — {processed} samples [patterns only]"
+            f"SecLists frequency: {fpath.name} - {processed} samples [patterns only]"
         )
     return processed
