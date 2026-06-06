@@ -2510,6 +2510,29 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Save results as JSON report")
     p_bm.add_argument("-o", "--output", help="Save text report to file")
 
+    # anomaly-score
+    p_anm = sub.add_parser(
+        "anomaly-score",
+        help="Rank wordlist entries by anomaly score (most unusual first)",
+        description=(
+            "Score each password in a wordlist using a native ensemble of\n"
+            "IsolationForest-lite and HBOS-lite algorithms. No external\n"
+            "ML library required. Higher score = more anomalous.\n\n"
+            "Examples:\n"
+            "  wfh.py anomaly-score passwords/wlist_brasil.lst --top 50\n"
+            "  wfh.py anomaly-score leak.txt --top 100 -o rare.txt\n"
+            "  wfh.py anomaly-score corpus.lst --max-lines 200000"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_anm.add_argument("wordlist", metavar="WORDLIST", help="Input wordlist file path")
+    p_anm.add_argument("--top", type=int, default=0, metavar="N",
+                       help="Return only the top-N most anomalous entries (0 = all)")
+    p_anm.add_argument("--max-lines", dest="max_lines", type=int, default=100_000,
+                       help="Maximum lines to read from wordlist (default: 100000)")
+    p_anm.add_argument("-o", "--output", metavar="FILE",
+                       help="Save scored password list to file (one per line, no scores)")
+
     # ── prince ───────────────────────────────────────────────────────────
     p_pr = sub.add_parser(
         "prince",
@@ -2797,6 +2820,49 @@ def cmd_train(args: argparse.Namespace) -> None:
     print(model.describe())
 
 
+def cmd_anomaly_score(args: argparse.Namespace) -> None:
+    """Rank passwords in a wordlist by anomaly score (most unusual first).
+
+    Uses a native ensemble of IsolationForest-lite and HBOS-lite algorithms
+    reimplemented without any external ML dependency.
+
+    Example:
+        wfh anomaly-score passwords/wlist_brasil.lst --top 50
+        wfh anomaly-score leak.txt --top 100 --output rare_passwords.txt
+    """
+    from wfh_modules.anomaly_scorer import score_wordlist
+
+    path = getattr(args, "wordlist", None)
+    if not path:
+        _warn("anomaly-score requires a wordlist path as argument.")
+        return
+
+    top_n = getattr(args, "top", 0)
+    max_lines = getattr(args, "max_lines", 100_000)
+    output = getattr(args, "output", None)
+
+    try:
+        results = score_wordlist(path, top_n=top_n, max_lines=max_lines)
+    except FileNotFoundError as exc:
+        _warn(str(exc))
+        return
+
+    lines_out = [f"{score:.4f}\t{pw}" for pw, score in results]
+
+    if output:
+        out_path = Path(output)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_text("\n".join(pw for pw, _ in results), encoding="utf-8")
+        _info(f"Saved {len(results)} entries to: {out_path}")
+    else:
+        print(f"{'Score':>8}  Password")
+        print("-" * 40)
+        for pw, score in results:
+            print(f"{score:>8.4f}  {pw}")
+
+    _info(f"Scored {len(results)} password(s). Higher score = more anomalous.")
+
+
 def _resolve_path(p: str):
     """Resolve a path relative to wfh.py location or cwd."""
     from pathlib import Path
@@ -2893,6 +2959,7 @@ def main() -> None:
         "rulegen":       cmd_rulegen,
         "benchmark":     cmd_benchmark,
         "prince":        cmd_prince,
+        "anomaly-score": cmd_anomaly_score,
     }
 
     handler = handlers.get(args.command)
