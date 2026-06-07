@@ -22,7 +22,13 @@ logger = logging.getLogger(__name__)
 _CORPUS_INDEX = Path(__file__).parent.parent / "data" / "seclists_corpus.json"
 
 _KNOWN_SECLISTS_RELATIVES = [
-    # Superproject layout: submodules/Wordlists/SecLists (relative to WFH root)
+    # Superproject layout: submodules/Wordlists/SecLists
+    # WFH is at submodules/Uniao-Geek/WordListsForHacking (3 levels inside submodules/)
+    # Resolved: go up 4 levels from wfh_modules/ -> submodules/ -> Wordlists/SecLists
+    Path(__file__).resolve().parents[3] / "Wordlists" / "SecLists",
+    # Alternate: go up 3 levels then into Wordlists (covers flat checkout)
+    Path(__file__).resolve().parents[2] / "Wordlists" / "SecLists",
+    # Legacy paths kept for backward compatibility
     Path(__file__).parent.parent.parent.parent / "Wordlists" / "SecLists",
     Path(__file__).parent.parent.parent / "SecLists",
     Path(__file__).parent.parent / "SecLists",
