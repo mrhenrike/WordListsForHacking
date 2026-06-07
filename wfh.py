@@ -1373,6 +1373,96 @@ def cmd_mangle(args: argparse.Namespace) -> None:
     _ok(f"Mangled output: {count:,} entries")
 
 
+def cmd_br_names(args: argparse.Namespace) -> None:
+    """Handler for the br-names subcommand.
+
+    Generates a username list from BRWordList Brazilian name files.
+    """
+    from wfh_modules.brwordlist_loader import BRWordListLoader, generate_usernames_from_br_names
+    from pathlib import Path as _Path
+
+    explicit_path: Optional[str] = getattr(args, "brwordlist_path", None)
+    base_path = _Path(explicit_path) if explicit_path else None
+
+    category: str = getattr(args, "category", "names") or "names"
+    include_leet: bool = bool(getattr(args, "leet", False))
+
+    loader = BRWordListLoader(base_path)
+    if not loader.is_available():
+        _warn(
+            "BRWordList submodule not found. Run:\n"
+            "  git submodule update --init submodules/Wordlists/BRWordList"
+        )
+        return
+
+    _info(f"Loading BRWordList names (category={category})...")
+    usernames = generate_usernames_from_br_names(
+        category=category,
+        base_path=base_path,
+        include_leet=include_leet,
+    )
+
+    if not usernames:
+        _warn("No names loaded from BRWordList.")
+        return
+
+    count = _write_output(iter(usernames), args.output)
+    _ok(f"br-names: {count:,} username entries generated")
+
+
+def cmd_iwlgen(args: argparse.Namespace) -> None:
+    """Handler for the iwlgen subcommand.
+
+    Generates keyword permutation wordlists using the IwlgenEngine.
+    """
+    from wfh_modules.iwlgen import IwlgenEngine
+
+    raw_keywords: Optional[str] = getattr(args, "keywords", None)
+    if not raw_keywords:
+        _err("Provide at least one keyword with --keywords.")
+        return
+
+    keywords: list[str] = [k.strip() for k in raw_keywords.split(",") if k.strip()]
+    if not keywords:
+        _err("No valid keywords found in --keywords input.")
+        return
+
+    raw_connectors: str = getattr(args, "connectors", "") or ""
+    if raw_connectors:
+        connectors = list(raw_connectors)
+    else:
+        connectors = ["", ".", "_", "-", "@"]
+
+    do_leet: bool = bool(getattr(args, "leet", False))
+    do_abbr: bool = bool(getattr(args, "abbreviation", False))
+    do_reverse: bool = bool(getattr(args, "reverse", False))
+
+    raw_num_tails: Optional[str] = getattr(args, "num_tails", None)
+    num_tails: list[str] = [t.strip() for t in raw_num_tails.split(",") if t.strip()] if raw_num_tails else []
+
+    min_len: int = int(getattr(args, "min_length", 4) or 4)
+    max_len: int = int(getattr(args, "max_length", 64) or 64)
+
+    config = {
+        "connectors": connectors,
+        "leet": do_leet,
+        "abbreviation": do_abbr,
+        "reverse": do_reverse,
+        "num_tails": num_tails,
+        "tails": [""],
+        "min_length": min_len,
+        "max_length": max_len,
+        "to_lower": True,
+    }
+
+    _info(f"IwlgenEngine: keywords={keywords}, connectors={connectors}, leet={do_leet}")
+    engine = IwlgenEngine()
+    wordlist = engine.generate(keywords=keywords, config=config)
+
+    count = _write_output(iter(wordlist), args.output)
+    _ok(f"iwlgen: {count:,} entries generated")
+
+
 # ── Interactive menu ──────────────────────────────────────────────────────────
 
 def interactive_menu() -> None:
@@ -2568,6 +2658,91 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Max candidates (0 = unlimited)")
     p_pr.add_argument("-o", "--output", help="Output file")
 
+    # ── br-names ─────────────────────────────────────────────────────────
+    p_brn = sub.add_parser(
+        "br-names",
+        help="Generate username list from BRWordList Brazilian name files",
+        description=(
+            "Loads name lists from the BRWordList submodule and produces\n"
+            "a deduplicated username wordlist suitable for credential attacks.\n\n"
+            "Requires: git submodule update --init submodules/Wordlists/BRWordList\n\n"
+            "Examples:\n"
+            "  wfh.py br-names\n"
+            "  wfh.py br-names --category surnames -o surnames.lst\n"
+            "  wfh.py br-names --category all --leet -o names_leet.lst\n"
+            "  wfh.py br-names --brwordlist-path /opt/BRWordList"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_brn.add_argument(
+        "--category", default="names",
+        choices=["names", "surnames", "full_names", "initials", "rev_initials", "a-z", "all"],
+        help="Name category to load (default: names)",
+    )
+    p_brn.add_argument(
+        "--leet", action="store_true",
+        help="Also generate basic leet variants",
+    )
+    p_brn.add_argument(
+        "--brwordlist-path", dest="brwordlist_path", metavar="PATH",
+        help="Explicit path to BRWordList root (auto-detected if omitted)",
+    )
+    p_brn.add_argument("-o", "--output", help="Output file")
+
+    # ── iwlgen ───────────────────────────────────────────────────────────
+    p_iw = sub.add_parser(
+        "iwlgen",
+        help="Intelligence keyword permutation wordlist generator",
+        description=(
+            "Generates wordlists from keyword permutations with optional\n"
+            "leet substitution, abbreviation, reversal, and numeric tails.\n"
+            "Native Python 3 port of intelligence-wordlist-generator.\n\n"
+            "Examples:\n"
+            "  wfh.py iwlgen --keywords admin,router,2024 --connectors @.\n"
+            "  wfh.py iwlgen --keywords empresa,corp --leet --abbreviation\n"
+            "  wfh.py iwlgen --keywords cisco,admin --num-tails 1-99 --connectors ._\n"
+            "  wfh.py iwlgen --keywords guest,pass --connectors '' -o out.lst"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_iw.add_argument(
+        "--keywords", required=True, metavar="KW1,KW2,...",
+        help="Comma-separated keywords (e.g. admin,router,2024)",
+    )
+    p_iw.add_argument(
+        "--connectors", default="", metavar="CHARS",
+        help=(
+            "Connector characters to join keywords, specified as a string.\n"
+            "Each character becomes a separate connector (default: '._-@' empty).\n"
+            "Example: --connectors '@._' uses @, ., _ and also empty string."
+        ),
+    )
+    p_iw.add_argument(
+        "--leet", action="store_true",
+        help="Apply leet-speak substitutions to generated words",
+    )
+    p_iw.add_argument(
+        "--abbreviation", action="store_true",
+        help="Generate single-character abbreviation variants",
+    )
+    p_iw.add_argument(
+        "--reverse", action="store_true",
+        help="Generate element-reversal variants",
+    )
+    p_iw.add_argument(
+        "--num-tails", dest="num_tails", metavar="SPEC",
+        help="Numeric tail specs, comma-separated (e.g. '1,2,01-05,2024')",
+    )
+    p_iw.add_argument(
+        "--min-length", dest="min_length", type=int, default=4,
+        help="Minimum entry length (default: 4)",
+    )
+    p_iw.add_argument(
+        "--max-length", dest="max_length", type=int, default=64,
+        help="Maximum entry length (default: 64)",
+    )
+    p_iw.add_argument("-o", "--output", help="Output file")
+
     return parser
 
 
@@ -2820,6 +2995,124 @@ def cmd_train(args: argparse.Namespace) -> None:
     print(model.describe())
 
 
+def cmd_osint_perm(args: argparse.Namespace) -> None:
+    """Generate OSINT-based password candidates from target profile."""
+    from wfh_modules.osint_perm import OsintProfile, OsintPermGenerator
+
+    profile = OsintProfile(
+        first_name=getattr(args, "first_name", "") or "",
+        last_name=getattr(args, "last_name", "") or "",
+        nickname=getattr(args, "nick", "") or "",
+        birth_date=getattr(args, "birth", "") or "",
+        pet_name=getattr(args, "pet", "") or "",
+        phone=getattr(args, "phone", "") or "",
+        complexity=getattr(args, "complexity", 1),
+        keywords=list(getattr(args, "keywords", None) or []),
+    )
+    gen = OsintPermGenerator()
+    results = gen.generate(profile)
+    output = getattr(args, "output", None)
+    if output:
+        from pathlib import Path
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        Path(output).write_text("\n".join(results), encoding="utf-8")
+        _info(f"Saved {len(results)} candidates to: {output}")
+    else:
+        for r in results[:50]:
+            print(r)
+        if len(results) > 50:
+            _info(f"... and {len(results)-50} more. Use -o FILE to save all.")
+    _info(f"Generated {len(results)} OSINT-based candidates.")
+
+
+def cmd_cupp(args: argparse.Namespace) -> None:
+    """Generate target-specific passwords from user profile (CUPP-style)."""
+    from wfh_modules.cupp_engine import CuppEngine, CuppProfile
+
+    profile = CuppProfile(
+        first_name=getattr(args, "first_name", "") or "",
+        last_name=getattr(args, "last_name", "") or "",
+        nickname=getattr(args, "nick", "") or "",
+        birth_date=getattr(args, "birth", "") or "",
+        pet_name=getattr(args, "pet", "") or "",
+        company=getattr(args, "company", "") or "",
+        extra_words=list(getattr(args, "words", None) or []),
+    )
+    engine = CuppEngine()
+    results = engine.generate(profile, max_output=getattr(args, "max_output", 0))
+    output = getattr(args, "output", None)
+    if output:
+        from pathlib import Path
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        Path(output).write_text("\n".join(results), encoding="utf-8")
+        _info(f"Saved {len(results)} candidates to: {output}")
+    else:
+        for r in results[:50]:
+            print(r)
+        if len(results) > 50:
+            _info(f"... and {len(results)-50} more. Use -o FILE to save all.")
+    _info(f"Generated {len(results)} CUPP-style candidates.")
+
+
+def cmd_pattern_rank(args: argparse.Namespace) -> None:
+    """Analyze wordlist patterns: keyboard walks, Hashcat masks, PTBR months."""
+    from wfh_modules.pattern_ranker import analyze_wordlist, score_keyboard_walk, build_hashcat_mask
+
+    path = getattr(args, "wordlist", None)
+    if not path:
+        _warn("pattern-rank requires a wordlist path.")
+        return
+    layout = getattr(args, "layout", "qwerty") or "qwerty"
+    max_l = getattr(args, "max_lines", 500_000)
+
+    _info(f"Analyzing {path} (layout={layout})...")
+    result = analyze_wordlist(path, max_lines=max_l, layout=layout)
+
+    print(f"\n  Pattern Analysis: {path}")
+    print(f"  Total analyzed  : {result['total_analyzed']:,}")
+    print(f"  Unique masks    : {result['unique_masks']:,}")
+    print(f"  Keyboard walk   : {result['keyboard_walk_pct']:.1f}% of passwords")
+    print(f"  PTBR months     : {result['ptbr_month_pct']:.1f}% of passwords")
+    print(f"\n  Top 10 Hashcat masks:")
+    for mask, count, pct in result["top_masks"][:10]:
+        print(f"    {mask:<30} {count:>8}  ({pct:.1f}%)")
+    print()
+
+
+def cmd_scrape_target(args: argparse.Namespace) -> None:
+    """Crawl a target URL and extract words for wordlist generation."""
+    from wfh_modules.target_spider import TargetSpider
+
+    url = getattr(args, "url", None)
+    if not url:
+        _warn("scrape-target requires --url")
+        return
+    depth = getattr(args, "depth", 2)
+    min_len = getattr(args, "min_len", 4)
+    output = getattr(args, "output", None)
+
+    spider = TargetSpider(min_len=min_len, max_pages=getattr(args, "max_pages", 20))
+    _info(f"Crawling {url} (depth={depth})...")
+
+    try:
+        words = spider.crawl(url, depth=depth)
+    except ImportError as exc:
+        _warn(f"requests/beautifulsoup4 required: {exc}")
+        return
+
+    if output:
+        from pathlib import Path
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        Path(output).write_text("\n".join(words), encoding="utf-8")
+        _info(f"Saved {len(words)} words to: {output}")
+    else:
+        for w in words[:40]:
+            print(w)
+        if len(words) > 40:
+            _info(f"... and {len(words)-40} more. Use -o FILE to save all.")
+    _info(f"Extracted {len(words)} words from {url}")
+
+
 def cmd_anomaly_score(args: argparse.Namespace) -> None:
     """Rank passwords in a wordlist by anomaly score (most unusual first).
 
@@ -2960,6 +3253,12 @@ def main() -> None:
         "benchmark":     cmd_benchmark,
         "prince":        cmd_prince,
         "anomaly-score": cmd_anomaly_score,
+        "osint-perm":    cmd_osint_perm,
+        "cupp":          cmd_cupp,
+        "pattern-rank":  cmd_pattern_rank,
+        "scrape-target": cmd_scrape_target,
+        "br-names":      cmd_br_names,
+        "iwlgen":        cmd_iwlgen,
     }
 
     handler = handlers.get(args.command)
