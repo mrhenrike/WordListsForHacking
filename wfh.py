@@ -1373,6 +1373,96 @@ def cmd_mangle(args: argparse.Namespace) -> None:
     _ok(f"Mangled output: {count:,} entries")
 
 
+def cmd_br_names(args: argparse.Namespace) -> None:
+    """Handler for the br-names subcommand.
+
+    Generates a username list from BRWordList Brazilian name files.
+    """
+    from wfh_modules.brwordlist_loader import BRWordListLoader, generate_usernames_from_br_names
+    from pathlib import Path as _Path
+
+    explicit_path: Optional[str] = getattr(args, "brwordlist_path", None)
+    base_path = _Path(explicit_path) if explicit_path else None
+
+    category: str = getattr(args, "category", "names") or "names"
+    include_leet: bool = bool(getattr(args, "leet", False))
+
+    loader = BRWordListLoader(base_path)
+    if not loader.is_available():
+        _warn(
+            "BRWordList submodule not found. Run:\n"
+            "  git submodule update --init submodules/Wordlists/BRWordList"
+        )
+        return
+
+    _info(f"Loading BRWordList names (category={category})...")
+    usernames = generate_usernames_from_br_names(
+        category=category,
+        base_path=base_path,
+        include_leet=include_leet,
+    )
+
+    if not usernames:
+        _warn("No names loaded from BRWordList.")
+        return
+
+    count = _write_output(iter(usernames), args.output)
+    _ok(f"br-names: {count:,} username entries generated")
+
+
+def cmd_iwlgen(args: argparse.Namespace) -> None:
+    """Handler for the iwlgen subcommand.
+
+    Generates keyword permutation wordlists using the IwlgenEngine.
+    """
+    from wfh_modules.iwlgen import IwlgenEngine
+
+    raw_keywords: Optional[str] = getattr(args, "keywords", None)
+    if not raw_keywords:
+        _err("Provide at least one keyword with --keywords.")
+        return
+
+    keywords: list[str] = [k.strip() for k in raw_keywords.split(",") if k.strip()]
+    if not keywords:
+        _err("No valid keywords found in --keywords input.")
+        return
+
+    raw_connectors: str = getattr(args, "connectors", "") or ""
+    if raw_connectors:
+        connectors = list(raw_connectors)
+    else:
+        connectors = ["", ".", "_", "-", "@"]
+
+    do_leet: bool = bool(getattr(args, "leet", False))
+    do_abbr: bool = bool(getattr(args, "abbreviation", False))
+    do_reverse: bool = bool(getattr(args, "reverse", False))
+
+    raw_num_tails: Optional[str] = getattr(args, "num_tails", None)
+    num_tails: list[str] = [t.strip() for t in raw_num_tails.split(",") if t.strip()] if raw_num_tails else []
+
+    min_len: int = int(getattr(args, "min_length", 4) or 4)
+    max_len: int = int(getattr(args, "max_length", 64) or 64)
+
+    config = {
+        "connectors": connectors,
+        "leet": do_leet,
+        "abbreviation": do_abbr,
+        "reverse": do_reverse,
+        "num_tails": num_tails,
+        "tails": [""],
+        "min_length": min_len,
+        "max_length": max_len,
+        "to_lower": True,
+    }
+
+    _info(f"IwlgenEngine: keywords={keywords}, connectors={connectors}, leet={do_leet}")
+    engine = IwlgenEngine()
+    wordlist = engine.generate(keywords=keywords, config=config)
+
+    count = _write_output(iter(wordlist), args.output)
+    _ok(f"iwlgen: {count:,} entries generated")
+
+
 # ── Interactive menu ──────────────────────────────────────────────────────────
 
 def interactive_menu() -> None:
@@ -2568,6 +2658,91 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Max candidates (0 = unlimited)")
     p_pr.add_argument("-o", "--output", help="Output file")
 
+    # ── br-names ─────────────────────────────────────────────────────────
+    p_brn = sub.add_parser(
+        "br-names",
+        help="Generate username list from BRWordList Brazilian name files",
+        description=(
+            "Loads name lists from the BRWordList submodule and produces\n"
+            "a deduplicated username wordlist suitable for credential attacks.\n\n"
+            "Requires: git submodule update --init submodules/Wordlists/BRWordList\n\n"
+            "Examples:\n"
+            "  wfh.py br-names\n"
+            "  wfh.py br-names --category surnames -o surnames.lst\n"
+            "  wfh.py br-names --category all --leet -o names_leet.lst\n"
+            "  wfh.py br-names --brwordlist-path /opt/BRWordList"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_brn.add_argument(
+        "--category", default="names",
+        choices=["names", "surnames", "full_names", "initials", "rev_initials", "a-z", "all"],
+        help="Name category to load (default: names)",
+    )
+    p_brn.add_argument(
+        "--leet", action="store_true",
+        help="Also generate basic leet variants",
+    )
+    p_brn.add_argument(
+        "--brwordlist-path", dest="brwordlist_path", metavar="PATH",
+        help="Explicit path to BRWordList root (auto-detected if omitted)",
+    )
+    p_brn.add_argument("-o", "--output", help="Output file")
+
+    # ── iwlgen ───────────────────────────────────────────────────────────
+    p_iw = sub.add_parser(
+        "iwlgen",
+        help="Intelligence keyword permutation wordlist generator",
+        description=(
+            "Generates wordlists from keyword permutations with optional\n"
+            "leet substitution, abbreviation, reversal, and numeric tails.\n"
+            "Native Python 3 port of intelligence-wordlist-generator.\n\n"
+            "Examples:\n"
+            "  wfh.py iwlgen --keywords admin,router,2024 --connectors @.\n"
+            "  wfh.py iwlgen --keywords empresa,corp --leet --abbreviation\n"
+            "  wfh.py iwlgen --keywords cisco,admin --num-tails 1-99 --connectors ._\n"
+            "  wfh.py iwlgen --keywords guest,pass --connectors '' -o out.lst"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_iw.add_argument(
+        "--keywords", required=True, metavar="KW1,KW2,...",
+        help="Comma-separated keywords (e.g. admin,router,2024)",
+    )
+    p_iw.add_argument(
+        "--connectors", default="", metavar="CHARS",
+        help=(
+            "Connector characters to join keywords, specified as a string.\n"
+            "Each character becomes a separate connector (default: '._-@' empty).\n"
+            "Example: --connectors '@._' uses @, ., _ and also empty string."
+        ),
+    )
+    p_iw.add_argument(
+        "--leet", action="store_true",
+        help="Apply leet-speak substitutions to generated words",
+    )
+    p_iw.add_argument(
+        "--abbreviation", action="store_true",
+        help="Generate single-character abbreviation variants",
+    )
+    p_iw.add_argument(
+        "--reverse", action="store_true",
+        help="Generate element-reversal variants",
+    )
+    p_iw.add_argument(
+        "--num-tails", dest="num_tails", metavar="SPEC",
+        help="Numeric tail specs, comma-separated (e.g. '1,2,01-05,2024')",
+    )
+    p_iw.add_argument(
+        "--min-length", dest="min_length", type=int, default=4,
+        help="Minimum entry length (default: 4)",
+    )
+    p_iw.add_argument(
+        "--max-length", dest="max_length", type=int, default=64,
+        help="Maximum entry length (default: 64)",
+    )
+    p_iw.add_argument("-o", "--output", help="Output file")
+
     return parser
 
 
@@ -3082,6 +3257,8 @@ def main() -> None:
         "cupp":          cmd_cupp,
         "pattern-rank":  cmd_pattern_rank,
         "scrape-target": cmd_scrape_target,
+        "br-names":      cmd_br_names,
+        "iwlgen":        cmd_iwlgen,
     }
 
     handler = handlers.get(args.command)

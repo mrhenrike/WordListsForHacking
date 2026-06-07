@@ -651,6 +651,31 @@ def phase2_usernames() -> None:
 
     log.info("Total usernames: %d", len(existing))
 
+    # Ingest Brazilian names from BRWordList submodule
+    try:
+        from wfh_modules.brwordlist_loader import BRWordListLoader
+        br_loader = BRWordListLoader()
+        if br_loader.is_available():
+            br_names = br_loader.load_names(category="names")
+            added = 0
+            for name in br_names:
+                clean = name.strip()
+                if clean and 2 <= len(clean) <= 32 and " " not in clean:
+                    if not re.fullmatch(r"\d{5,}", clean):
+                        if clean not in existing:
+                            existing.add(clean)
+                            added += 1
+            log.info("BRWordList names ingested: %d new entries added", added)
+        else:
+            log.warning(
+                "BRWordList not found - skipping name ingestion. "
+                "Run: git submodule update --init submodules/Wordlists/BRWordList"
+            )
+    except Exception as exc:
+        log.warning("BRWordList ingestion error: %s", exc)
+
+    log.info("Total usernames after BRWordList: %d", len(existing))
+
     with USERNAME_FILE.open("w", encoding="utf-8") as f:
         for u in sorted(existing, key=lambda x: x.lower()):
             f.write(u + "\n")
