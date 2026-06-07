@@ -2820,6 +2820,124 @@ def cmd_train(args: argparse.Namespace) -> None:
     print(model.describe())
 
 
+def cmd_osint_perm(args: argparse.Namespace) -> None:
+    """Generate OSINT-based password candidates from target profile."""
+    from wfh_modules.osint_perm import OsintProfile, OsintPermGenerator
+
+    profile = OsintProfile(
+        first_name=getattr(args, "first_name", "") or "",
+        last_name=getattr(args, "last_name", "") or "",
+        nickname=getattr(args, "nick", "") or "",
+        birth_date=getattr(args, "birth", "") or "",
+        pet_name=getattr(args, "pet", "") or "",
+        phone=getattr(args, "phone", "") or "",
+        complexity=getattr(args, "complexity", 1),
+        keywords=list(getattr(args, "keywords", None) or []),
+    )
+    gen = OsintPermGenerator()
+    results = gen.generate(profile)
+    output = getattr(args, "output", None)
+    if output:
+        from pathlib import Path
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        Path(output).write_text("\n".join(results), encoding="utf-8")
+        _info(f"Saved {len(results)} candidates to: {output}")
+    else:
+        for r in results[:50]:
+            print(r)
+        if len(results) > 50:
+            _info(f"... and {len(results)-50} more. Use -o FILE to save all.")
+    _info(f"Generated {len(results)} OSINT-based candidates.")
+
+
+def cmd_cupp(args: argparse.Namespace) -> None:
+    """Generate target-specific passwords from user profile (CUPP-style)."""
+    from wfh_modules.cupp_engine import CuppEngine, CuppProfile
+
+    profile = CuppProfile(
+        first_name=getattr(args, "first_name", "") or "",
+        last_name=getattr(args, "last_name", "") or "",
+        nickname=getattr(args, "nick", "") or "",
+        birth_date=getattr(args, "birth", "") or "",
+        pet_name=getattr(args, "pet", "") or "",
+        company=getattr(args, "company", "") or "",
+        extra_words=list(getattr(args, "words", None) or []),
+    )
+    engine = CuppEngine()
+    results = engine.generate(profile, max_output=getattr(args, "max_output", 0))
+    output = getattr(args, "output", None)
+    if output:
+        from pathlib import Path
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        Path(output).write_text("\n".join(results), encoding="utf-8")
+        _info(f"Saved {len(results)} candidates to: {output}")
+    else:
+        for r in results[:50]:
+            print(r)
+        if len(results) > 50:
+            _info(f"... and {len(results)-50} more. Use -o FILE to save all.")
+    _info(f"Generated {len(results)} CUPP-style candidates.")
+
+
+def cmd_pattern_rank(args: argparse.Namespace) -> None:
+    """Analyze wordlist patterns: keyboard walks, Hashcat masks, PTBR months."""
+    from wfh_modules.pattern_ranker import analyze_wordlist, score_keyboard_walk, build_hashcat_mask
+
+    path = getattr(args, "wordlist", None)
+    if not path:
+        _warn("pattern-rank requires a wordlist path.")
+        return
+    layout = getattr(args, "layout", "qwerty") or "qwerty"
+    max_l = getattr(args, "max_lines", 500_000)
+
+    _info(f"Analyzing {path} (layout={layout})...")
+    result = analyze_wordlist(path, max_lines=max_l, layout=layout)
+
+    print(f"\n  Pattern Analysis: {path}")
+    print(f"  Total analyzed  : {result['total_analyzed']:,}")
+    print(f"  Unique masks    : {result['unique_masks']:,}")
+    print(f"  Keyboard walk   : {result['keyboard_walk_pct']:.1f}% of passwords")
+    print(f"  PTBR months     : {result['ptbr_month_pct']:.1f}% of passwords")
+    print(f"\n  Top 10 Hashcat masks:")
+    for mask, count, pct in result["top_masks"][:10]:
+        print(f"    {mask:<30} {count:>8}  ({pct:.1f}%)")
+    print()
+
+
+def cmd_scrape_target(args: argparse.Namespace) -> None:
+    """Crawl a target URL and extract words for wordlist generation."""
+    from wfh_modules.target_spider import TargetSpider
+
+    url = getattr(args, "url", None)
+    if not url:
+        _warn("scrape-target requires --url")
+        return
+    depth = getattr(args, "depth", 2)
+    min_len = getattr(args, "min_len", 4)
+    output = getattr(args, "output", None)
+
+    spider = TargetSpider(min_len=min_len, max_pages=getattr(args, "max_pages", 20))
+    _info(f"Crawling {url} (depth={depth})...")
+
+    try:
+        words = spider.crawl(url, depth=depth)
+    except ImportError as exc:
+        _warn(f"requests/beautifulsoup4 required: {exc}")
+        return
+
+    if output:
+        from pathlib import Path
+        Path(output).parent.mkdir(parents=True, exist_ok=True)
+        Path(output).write_text("\n".join(words), encoding="utf-8")
+        _info(f"Saved {len(words)} words to: {output}")
+    else:
+        for w in words[:40]:
+            print(w)
+        if len(words) > 40:
+            _info(f"... and {len(words)-40} more. Use -o FILE to save all.")
+    _info(f"Extracted {len(words)} words from {url}")
+
+
 def cmd_anomaly_score(args: argparse.Namespace) -> None:
     """Rank passwords in a wordlist by anomaly score (most unusual first).
 
@@ -2960,6 +3078,10 @@ def main() -> None:
         "benchmark":     cmd_benchmark,
         "prince":        cmd_prince,
         "anomaly-score": cmd_anomaly_score,
+        "osint-perm":    cmd_osint_perm,
+        "cupp":          cmd_cupp,
+        "pattern-rank":  cmd_pattern_rank,
+        "scrape-target": cmd_scrape_target,
     }
 
     handler = handlers.get(args.command)
