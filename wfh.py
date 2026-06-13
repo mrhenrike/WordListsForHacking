@@ -1755,7 +1755,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_cs.add_argument("charset", nargs="?", default="lalpha",
                        help="Charset: built-in name or direct character string")
     p_cs.add_argument("-f", "--charset-file", dest="charset_file", help=".cfg charset file")
-    p_cs.add_argument("-p", "--pattern", help="Pattern with Crunch-style placeholders (@,%,^,...)")
+    p_cs.add_argument("-p", "--pattern", help="Pattern with Crunch-style placeholders (@ percent ^ ...)")
     p_cs.add_argument("--mask", metavar="MASK",
                        help="Hashcat-style mask (e.g. ?u?l?l?d?d?s — ?u=upper ?l=lower ?d=digit ?s=special ?a=all)")
     p_cs.add_argument("--custom-charset1", dest="custom_charset1", metavar="CHARS",
