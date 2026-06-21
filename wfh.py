@@ -999,13 +999,12 @@ def cmd_mutate(args: argparse.Namespace) -> None:
 
 def cmd_num2text(args: argparse.Namespace) -> None:
     """Convert digits to text words and generate case/leet/separator variations."""
-    from wfh_modules.num2text import num2text_variants, num2text_range
+    from wfh_modules.num2text import num2text_variants, num2text_range, _normalise_lang
 
-    lang     = getattr(args, "lang", "pt") or "pt"
+    lang     = _normalise_lang(getattr(args, "lang", "en") or "en")
     raw_seps = getattr(args, "separators", None)
     seps     = [s for s in raw_seps.split(",")] if raw_seps else None
     no_leet  = getattr(args, "no_leet", False)
-    no_acc   = getattr(args, "no_accented", False)
     min_len  = getattr(args, "min_len", 0) or 0
     max_len  = getattr(args, "max_len", 0) or 0
 
@@ -1022,7 +1021,7 @@ def cmd_num2text(args: argparse.Namespace) -> None:
             _err("Range too large (max 1,000,000 numbers at once)")
             return
         _info(f"num2text range {start}-{end}  lang={lang}")
-        gen = num2text_range(start, end, lang, seps, not no_leet, not no_acc, min_len, max_len)
+        gen = num2text_range(start, end, lang, seps, not no_leet, min_len, max_len)
     elif raw_number:
         s = str(raw_number)
         if not s.isdigit():
@@ -1032,7 +1031,7 @@ def cmd_num2text(args: argparse.Namespace) -> None:
             _err("--number exceeds 12 digits")
             return
         _info(f"num2text: {s}  lang={lang}")
-        gen = num2text_variants(s, lang, seps, not no_leet, not no_acc, min_len, max_len)
+        gen = num2text_variants(s, lang, seps, not no_leet, min_len, max_len)
     else:
         _err("Provide --number or --range")
         return
@@ -2298,13 +2297,20 @@ def build_parser() -> argparse.ArgumentParser:
         "num2text",
         help="Convert digits to text words and generate case/leet/separator variants",
         description=(
-            "Converts a number (up to 12 digits) into its digit-by-digit text\n"
+            "Converts a number (up to 12 digits) into its digit-by-digit word\n"
             "representation and generates multiple case, leet and separator variants.\n\n"
+            "Language codes accepted:\n"
+            "  en / en-us / en-gb  — English (default)    one, two, three, ...\n"
+            "  pt / pt-pt          — European Portuguese   um, dois, tres, ...\n"
+            "  br / pt-br          — Brazilian Portuguese  um/uma, dois/duas, tres, ...\n"
+            "  es / es-es / es-mx  — Spanish               uno, dos, tres, ...\n\n"
             "Examples:\n"
             "  wfh num2text --number 123\n"
-            "  wfh num2text --number 2025 --lang en\n"
-            "  wfh num2text --number 1206 --separators -,_,@\n"
-            "  wfh num2text --range 0-9999 -o labs/labs_number2text.lst\n"
+            "  wfh num2text --number 123 --lang pt\n"
+            "  wfh num2text --number 123 --lang br\n"
+            "  wfh num2text --number 123 --lang es\n"
+            "  wfh num2text --number 1206 --lang en --separators -,_,@\n"
+            "  wfh num2text --range 0-9999 --lang en -o labs/labs_number2text.lst\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -2312,14 +2318,12 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Single number to convert (up to 12 digits)")
     p_n2t.add_argument("--range", metavar="START-END",
                        help="Range of numbers to convert (e.g. 0-9999)")
-    p_n2t.add_argument("--lang", choices=["pt", "en"], default="pt",
-                       help="Digit language: pt (default) or en")
+    p_n2t.add_argument("--lang", metavar="LANG", default="en",
+                       help="Digit language: en (default), pt, br, es — also: en-us, pt-br, es-mx, etc.")
     p_n2t.add_argument("--separators", metavar="SEP1,SEP2,...",
                        help="Word separators (default: \"\", -, _, ., @, #, !)")
     p_n2t.add_argument("--no-leet", action="store_true", dest="no_leet",
                        help="Skip leet substitutions")
-    p_n2t.add_argument("--no-accented", action="store_true", dest="no_accented",
-                       help="Skip PT-BR accented variants (três, etc.)")
     p_n2t.add_argument("--min-len", type=int, default=0, dest="min_len",
                        help="Minimum entry length")
     p_n2t.add_argument("--max-len", type=int, default=0, dest="max_len",
