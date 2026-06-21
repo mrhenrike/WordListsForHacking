@@ -9,7 +9,7 @@ leet, xor, analyze, merge, dns, pharma, sanitize, reverse, mangle.
 Usage:
   python wfh.py                              # interactive menu
   python wfh.py charset 6 8 abc123           # charset + length
-  python wfh.py pattern -t "DS{cod}@rd.com.br" --vars cod=1200-1300
+  python wfh.py pattern -t "XX{cod}@corp.example.com" --vars cod=1200-1300
   python wfh.py profile                      # interactive personal profiling
   python wfh.py corp                         # interactive corporate profiling
   python wfh.py phone --country brazil --state SP
@@ -1311,21 +1311,53 @@ def cmd_dns(args: argparse.Namespace) -> None:
 
 
 def cmd_pharma(args: argparse.Namespace) -> None:
-    """Handler for Brazilian pharmacy patterns."""
-    from wfh_modules.pattern_engine import (
-        generate_pharma_patterns, generate_company_patterns,
+    """Generate passwords and usernames for retail/pharmacy chain patterns."""
+    from wfh_modules.pharma_gen import (
+        gen_passwords, gen_usernames, gen_both, _expand_id_range,
     )
 
-    store_codes_arg = getattr(args, "codes", None)
-    if store_codes_arg:
-        store_codes = [c.strip() for c in store_codes_arg.split(",")]
-    else:
-        store_codes = [str(c) for c in range(1200, 1215)]
+    brand  = getattr(args, "brand", None) or "AcmePharma"
+    mode   = getattr(args, "mode", "both") or "both"
 
-    _info(f"Generating BR pharmacy patterns [{len(store_codes)} store codes]...")
-    gen = generate_pharma_patterns(store_codes=store_codes)
+    raw_ids = getattr(args, "ids", None)
+    if raw_ids:
+        store_ids = _expand_id_range(raw_ids)
+    else:
+        store_ids = list(range(1200, 1215))
+
+    raw_cnpjs  = getattr(args, "cnpj", None)
+    cnpjs      = [c.strip() for c in raw_cnpjs.split(",")] if raw_cnpjs else []
+
+    raw_abbrevs = getattr(args, "abbrevs", None)
+    abbrevs     = [a.strip() for a in raw_abbrevs.split(",")] if raw_abbrevs else None
+
+    raw_seps = getattr(args, "separators", None)
+    seps     = [s for s in raw_seps.split(",")] if raw_seps else None
+
+    raw_partners = getattr(args, "partners", None)
+    partners     = [p.strip() for p in raw_partners.split(",")] if raw_partners else None
+
+    raw_domains = getattr(args, "domains", None)
+    domains     = [d.strip() for d in raw_domains.split(",")] if raw_domains else None
+
+    padding  = not getattr(args, "no_padding", False)
+    min_len  = getattr(args, "min_len", 0) or 0
+    max_len  = getattr(args, "max_len", 0) or 0
+
+    _info(f"Brand: {brand}  |  IDs: {len(store_ids)}  |  Tax IDs: {len(cnpjs)}  |  Mode: {mode}")
+
+    if mode == "passwords":
+        gen = gen_passwords(brand, store_ids, cnpjs, abbrevs, seps, partners,
+                            padding, min_len, max_len)
+    elif mode == "usernames":
+        gen = gen_usernames(brand, store_ids, domains, abbrevs, padding,
+                            True, min_len, max_len)
+    else:
+        gen = gen_both(brand, store_ids, cnpjs, abbrevs, seps, partners,
+                       domains, padding, min_len, max_len)
+
     count = _write_output(gen, args.output)
-    _ok(f"Generated: {count:,} entries")
+    _ok(f"pharma: {count:,} entries generated")
 
 
 def cmd_sanitize(args: argparse.Namespace) -> None:
@@ -1660,7 +1692,7 @@ def interactive_menu() -> None:
         cmd_charset(ns)
 
     elif choice == "2":
-        ns.template = input("  Template (e.g. DS{cod}@rd.com.br): ").strip()
+        ns.template = input("  Template (e.g. XX{cod}@corp.example.com): ").strip()
         ns.template_file = None
         ns.vars = []
         while True:
@@ -1851,7 +1883,7 @@ def build_parser() -> argparse.ArgumentParser:
   python wfh.py charset 8 8 --digits 2 --lower 4 --upper 1 --special 1
   python wfh.py charset 6 8 -f charsets.cfg mixalpha-numeric
   python wfh.py charset --create-charset my_charsets.cfg
-  python wfh.py pattern -t "DS{cod}@rd.com.br" --vars cod=1200-1300
+  python wfh.py pattern -t "XX{cod}@corp.example.com" --vars cod=1200-1300
   python wfh.py profile
   python wfh.py profile --name "John Doe" --nick "johnny" --birth 15/03/1990
   python wfh.py profile --profile-file target.yaml -o wordlist.lst
@@ -1985,7 +2017,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     # ── pattern ───────────────────────────────────────────────────────────
     p_pt = sub.add_parser("pattern", help="Generate by template with variables")
-    p_pt.add_argument("-t", "--template", help="Template (e.g. DS{cod}@rd.com.br)")
+    p_pt.add_argument("-t", "--template", help="Template (e.g. XX{cod}@corp.example.com)")
     p_pt.add_argument("-f", "--template-file", dest="template_file", help="Template file")
     p_pt.add_argument("--vars", nargs="+", metavar="KEY=VALUE",
                        help="Variables (e.g. cod=1200-1300 company=Acme,Globex)")
@@ -2328,8 +2360,48 @@ def build_parser() -> argparse.ArgumentParser:
     p_dn.add_argument("-o", "--output", help="Output file")
 
     # ── pharma ────────────────────────────────────────────────────────────
-    p_ph = sub.add_parser("pharma", help="Brazilian pharmacy and health plan patterns")
-    p_ph.add_argument("--codes", help="Store codes (e.g. 1200-1300 or 1200,1201)")
+    p_ph = sub.add_parser(
+        "pharma",
+        help="Generate passwords and usernames for retail/pharmacy chain patterns",
+        description=(
+            "Generates wordlists based on common credential patterns in retail chain environments.\n\n"
+            "Password patterns:\n"
+            "  abbrev+sep+id       Brand#1206  ABBREV_1206  abbrev1206\n"
+            "  partner+cnpj        system01234567890123\n"
+            "  abbrev+sep+cnpj     AB-01234567890123\n\n"
+            "Username patterns:\n"
+            "  abbrev+id@domain    XX1206@corp.com  xx0100@corp.com\n"
+            "  IJ/LJ/TC+id         IJ1206  IJ120601  IJ120602  LJ0100\n\n"
+            "Examples:\n"
+            "  wfh pharma --brand AcmePharma --ids 1200-1210 -o out.lst\n"
+            "  wfh pharma --brand RetailCo --abbrevs RC,RET --cnpj 01234567890123 --mode passwords\n"
+            "  wfh pharma --brand BrandX --ids 5,6,7,8 --domains corp.com.br --mode usernames\n"
+            "  wfh pharma --brand AcmePharma --ids 1206 --partners system,partner --separators @,#\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_ph.add_argument("--brand", "-b", default="AcmePharma",
+                      help="Brand/company name (default: AcmePharma)")
+    p_ph.add_argument("--ids",
+                      help="Store ID range '1200-1210' or list '1206,1207,1208'")
+    p_ph.add_argument("--cnpj",
+                      help="Tax ID(s) comma-separated (e.g. 01234567890123)")
+    p_ph.add_argument("--abbrevs",
+                      help="Extra abbreviations comma-separated (e.g. AB,ABBRV,ABR)")
+    p_ph.add_argument("--separators",
+                      help="Separators comma-separated (default: @,#,!,&,_,-,.,*,'')")
+    p_ph.add_argument("--partners",
+                      help="System/partner prefixes comma-separated (default: system,portal,erp,...)")
+    p_ph.add_argument("--domains",
+                      help="Email domains for usernames comma-separated (e.g. corp.com.br)")
+    p_ph.add_argument("--mode", choices=["passwords", "usernames", "both"], default="both",
+                      help="Generation mode: passwords | usernames | both (default: both)")
+    p_ph.add_argument("--no-padding", action="store_true", dest="no_padding",
+                      help="Skip zero-padded ID variants (0100, 01206...)")
+    p_ph.add_argument("--min-len", type=int, default=0, dest="min_len",
+                      help="Minimum length of generated entries")
+    p_ph.add_argument("--max-len", type=int, default=0, dest="max_len",
+                      help="Maximum length of generated entries")
     p_ph.add_argument("-o", "--output", help="Output file")
 
     # ── sanitize ──────────────────────────────────────────────────────────

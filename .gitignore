@@ -17,3 +17,6 @@ dist/
 build/
 *.egg-info/
 *.egg
+
+# Lab datasets and generated lab files (never committed)
+labs/
