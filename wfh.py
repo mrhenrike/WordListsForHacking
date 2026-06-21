@@ -162,6 +162,7 @@ MENU = f"""
   {Fore.GREEN}[23]{Style.RESET_ALL} isp-keygen    — ISP default WiFi password keyspace generator
   {Fore.GREEN}[24]{Style.RESET_ALL} phrase        — Phrase-initials password generator (@0x90 style)
   {Fore.GREEN}[25]{Style.RESET_ALL} mutate        — Mutate an existing password (case/leet/prefix/suffix)
+  {Fore.GREEN}[26]{Style.RESET_ALL} num2text      — Convert digits to text words and generate variations
   {Fore.GREEN}[0]{Style.RESET_ALL}  Exit
 """
 
@@ -994,6 +995,50 @@ def cmd_mutate(args: argparse.Namespace) -> None:
 
     count = _write_output(_gen(), args.output)
     _ok(f"Generated: {count:,} mutation variants")
+
+
+def cmd_num2text(args: argparse.Namespace) -> None:
+    """Convert digits to text words and generate case/leet/separator variations."""
+    from wfh_modules.num2text import num2text_variants, num2text_range
+
+    lang     = getattr(args, "lang", "pt") or "pt"
+    raw_seps = getattr(args, "separators", None)
+    seps     = [s for s in raw_seps.split(",")] if raw_seps else None
+    no_leet  = getattr(args, "no_leet", False)
+    no_acc   = getattr(args, "no_accented", False)
+    min_len  = getattr(args, "min_len", 0) or 0
+    max_len  = getattr(args, "max_len", 0) or 0
+
+    raw_range  = getattr(args, "range", None)
+    raw_number = getattr(args, "number", None)
+
+    if raw_range:
+        parts = raw_range.split("-", 1)
+        if len(parts) != 2 or not parts[0].isdigit() or not parts[1].isdigit():
+            _err("--range must be in format START-END (e.g. 0-9999)")
+            return
+        start, end = int(parts[0]), int(parts[1])
+        if end - start > 1_000_000:
+            _err("Range too large (max 1,000,000 numbers at once)")
+            return
+        _info(f"num2text range {start}-{end}  lang={lang}")
+        gen = num2text_range(start, end, lang, seps, not no_leet, not no_acc, min_len, max_len)
+    elif raw_number:
+        s = str(raw_number)
+        if not s.isdigit():
+            _err("--number must contain digits only")
+            return
+        if len(s) > 12:
+            _err("--number exceeds 12 digits")
+            return
+        _info(f"num2text: {s}  lang={lang}")
+        gen = num2text_variants(s, lang, seps, not no_leet, not no_acc, min_len, max_len)
+    else:
+        _err("Provide --number or --range")
+        return
+
+    count = _write_output(gen, args.output)
+    _ok(f"num2text: {count:,} variants generated")
 
 
 def cmd_phrase(args: argparse.Namespace) -> None:
@@ -2247,6 +2292,39 @@ def build_parser() -> argparse.ArgumentParser:
     p_mut.add_argument("--max-len", dest="max_len", type=int, default=128,
                        help="Maximum result length (default: 128)")
     p_mut.add_argument("-o", "--output", help="Output file")
+
+    # ── num2text ──────────────────────────────────────────────────────────
+    p_n2t = sub.add_parser(
+        "num2text",
+        help="Convert digits to text words and generate case/leet/separator variants",
+        description=(
+            "Converts a number (up to 12 digits) into its digit-by-digit text\n"
+            "representation and generates multiple case, leet and separator variants.\n\n"
+            "Examples:\n"
+            "  wfh num2text --number 123\n"
+            "  wfh num2text --number 2025 --lang en\n"
+            "  wfh num2text --number 1206 --separators -,_,@\n"
+            "  wfh num2text --range 0-9999 -o labs/labs_number2text.lst\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_n2t.add_argument("--number", metavar="N",
+                       help="Single number to convert (up to 12 digits)")
+    p_n2t.add_argument("--range", metavar="START-END",
+                       help="Range of numbers to convert (e.g. 0-9999)")
+    p_n2t.add_argument("--lang", choices=["pt", "en"], default="pt",
+                       help="Digit language: pt (default) or en")
+    p_n2t.add_argument("--separators", metavar="SEP1,SEP2,...",
+                       help="Word separators (default: \"\", -, _, ., @, #, !)")
+    p_n2t.add_argument("--no-leet", action="store_true", dest="no_leet",
+                       help="Skip leet substitutions")
+    p_n2t.add_argument("--no-accented", action="store_true", dest="no_accented",
+                       help="Skip PT-BR accented variants (três, etc.)")
+    p_n2t.add_argument("--min-len", type=int, default=0, dest="min_len",
+                       help="Minimum entry length")
+    p_n2t.add_argument("--max-len", type=int, default=0, dest="max_len",
+                       help="Maximum entry length")
+    p_n2t.add_argument("-o", "--output", help="Output file")
 
     p_phrase = sub.add_parser(
         "phrase",
@@ -3617,6 +3695,7 @@ def main() -> None:
         "iwlgen":        cmd_iwlgen,
         "phrase":        cmd_phrase,
         "mutate":        cmd_mutate,
+        "num2text":      cmd_num2text,
     }
 
     handler = handlers.get(args.command)
