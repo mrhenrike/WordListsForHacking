@@ -83,7 +83,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "2.5.0"
+VERSION = "2.6.0"
 
 # ── Graceful shutdown ──────────────────────────────────────────────────────────
 _SHUTDOWN_REQUESTED = False
@@ -113,6 +113,8 @@ _GLOBAL_CTX: dict = {
     "limit":        0,      # global line limit (0=unlimited)
     "timeout":      0,      # global timeout in seconds (0=unlimited)
     "start_time":   0.0,    # epoch when execution started
+    "min_len":      0,      # global minimum entry length (0=no filter)
+    "max_len":      0,      # global maximum entry length (0=no filter)
 }
 
 _BANNER_ART = (
@@ -158,6 +160,8 @@ MENU = f"""
   {Fore.GREEN}[21]{Style.RESET_ALL} mangle      — Apply hashcat-style mangling rules
   {Fore.GREEN}[22]{Style.RESET_ALL} default-creds — Query default credentials database (IoT/routers/SNMP)
   {Fore.GREEN}[23]{Style.RESET_ALL} isp-keygen    — ISP default WiFi password keyspace generator
+  {Fore.GREEN}[24]{Style.RESET_ALL} phrase        — Phrase-initials password generator (@0x90 style)
+  {Fore.GREEN}[25]{Style.RESET_ALL} mutate        — Mutate an existing password (case/leet/prefix/suffix)
   {Fore.GREEN}[0]{Style.RESET_ALL}  Exit
 """
 
@@ -212,9 +216,20 @@ def _write_output(
     timeout = _GLOBAL_CTX.get("timeout", 0)
     start = _GLOBAL_CTX.get("start_time", 0.0) or time.time()
 
+    # Global min/max override: take the most restrictive bound
+    g_min = _GLOBAL_CTX.get("min_len", 0) or 0
+    g_max = _GLOBAL_CTX.get("max_len", 0) or 0
+    if g_min > 0:
+        min_len = max(min_len, g_min)
+    if g_max > 0:
+        max_len = min(max_len, g_max) if max_len > 0 else g_max
+
     if output:
         out_path = Path(output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
+        if not _check_disk_space(output, estimate=estimate):
+            _warn("Cancelled by user — no file written.")
+            return 0
         mode = "a" if append else "w"
         f = out_path.open(mode, encoding="utf-8")
         _info(f"Writing to: {output}" + (" (append)" if append else ""))
@@ -267,6 +282,89 @@ def _write_output(
             f.close()
 
     return count
+
+
+def _format_bytes(n: int) -> str:
+    """Format byte count as human-readable string (B → KB → MB → GB → TB)."""
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if abs(n) < 1024.0:
+            return f"{n:.1f} {unit}"
+        n = int(n / 1024)
+    return f"{n:.1f} PB"
+
+
+def _check_disk_space(
+    output: str,
+    estimate: Optional[int] = None,
+    avg_entry_len: int = 14,
+) -> bool:
+    """
+    Check available disk space before writing an output file.
+
+    Warns and requests confirmation when:
+    - Estimated file size >= 50 MB, OR
+    - Estimated file size > 60 %% of free space, OR
+    - Free disk space < 300 MB regardless of estimate.
+
+    Args:
+        output: Destination file path.
+        estimate: Expected number of entries (None = unknown).
+        avg_entry_len: Average bytes per entry (including newline) for size estimation.
+
+    Returns:
+        True to proceed, False to cancel.
+    """
+    import shutil
+
+    try:
+        target_dir = Path(output).resolve().parent
+        usage = shutil.disk_usage(str(target_dir))
+        free_bytes = usage.free
+    except Exception:
+        return True  # can't check → proceed silently
+
+    warn_parts: list[str] = []
+    needs_confirm = False
+
+    est_bytes: Optional[int] = None
+    if estimate is not None and estimate > 0:
+        est_bytes = estimate * avg_entry_len
+
+    if est_bytes is not None:
+        if est_bytes >= 50 * 1024 * 1024:          # >= 50 MB
+            warn_parts.append(f"Estimated file size : {_format_bytes(est_bytes)}")
+            needs_confirm = True
+        if est_bytes > free_bytes * 0.6:            # > 60%% of free space
+            warn_parts.append(
+                f"File may use {est_bytes / free_bytes * 100:.0f}%% of available disk space"
+            )
+            needs_confirm = True
+
+    if free_bytes < 300 * 1024 * 1024:             # < 300 MB free (always warn)
+        warn_parts.insert(0, "Low disk space!")
+        needs_confirm = True
+
+    warn_parts.append(
+        f"Free disk space     : {_format_bytes(free_bytes)}  "
+        f"[{Path(output).resolve().parent}]"
+    )
+
+    if not needs_confirm:
+        if est_bytes is not None:
+            _info(f"Output size estimate: {_format_bytes(est_bytes)} | "
+                  f"Free: {_format_bytes(free_bytes)}")
+        return True
+
+    print()
+    for line in warn_parts:
+        _warn(line)
+    print()
+
+    try:
+        resp = input("  Continue writing to file? [y/N]: ").strip().lower()
+        return resp in ("y", "yes")
+    except (KeyboardInterrupt, EOFError):
+        return False
 
 
 def _confirm_large(estimate: int, threshold: int = 10_000_000) -> bool:
@@ -854,6 +952,84 @@ def cmd_extract(args: argparse.Namespace) -> None:
     )
     count = _write_output(gen, args.output)
     _ok(f"Extracted: {count:,} words")
+
+
+def cmd_mutate(args: argparse.Namespace) -> None:
+    """Handler for existing-password mutation generator."""
+    from wfh_modules.profiler import password_variants
+
+    password = getattr(args, "password", "") or ""
+    if not password:
+        _err("A password is required.")
+        return
+
+    extra_prefixes: Optional[list[str]] = None
+    raw_pfx = getattr(args, "prefixes", None)
+    if raw_pfx:
+        extra_prefixes = ["" if p == "EMPTY" else p for p in raw_pfx.split(",")]
+
+    extra_suffixes: Optional[list[str]] = None
+    raw_sfx = getattr(args, "suffixes", None)
+    if raw_sfx:
+        extra_suffixes = ["" if s == "EMPTY" else s for s in raw_sfx.split(",")]
+
+    leet_mode = getattr(args, "leet_mode", "all") or "all"
+    min_len = getattr(args, "min_len", 1) or 1
+    max_len = getattr(args, "max_len", 128) or 128
+
+    _info(f"Password : {password}")
+    _info(f"Leet     : {leet_mode}")
+
+    variants = password_variants(
+        password,
+        extra_prefixes=extra_prefixes,
+        extra_suffixes=extra_suffixes,
+        leet_mode=leet_mode,
+        min_len=min_len,
+        max_len=max_len,
+    )
+
+    def _gen():
+        yield from variants
+
+    count = _write_output(_gen(), args.output)
+    _ok(f"Generated: {count:,} mutation variants")
+
+
+def cmd_phrase(args: argparse.Namespace) -> None:
+    """Handler for phrase-initials password generation."""
+    from wfh_modules.profiler import phrase_initials_variants
+
+    phrase = getattr(args, "phrase", "") or ""
+    if not phrase:
+        _err("A phrase is required.")
+        return
+
+    extra_prefixes: Optional[list[str]] = None
+    raw_pfx = getattr(args, "prefixes", None)
+    if raw_pfx:
+        parts = raw_pfx.split(",")
+        extra_prefixes = ["" if p == "EMPTY" else p for p in parts]
+
+    extra_suffixes: Optional[list[str]] = None
+    raw_sfx = getattr(args, "suffixes", None)
+    if raw_sfx:
+        parts = raw_sfx.split(",")
+        extra_suffixes = ["" if s == "EMPTY" else s for s in parts]
+
+    _info(f"Phrase : {phrase}")
+
+    variants = phrase_initials_variants(
+        phrase,
+        extra_prefixes=extra_prefixes,
+        extra_suffixes=extra_suffixes,
+    )
+
+    def _gen():
+        yield from variants
+
+    count = _write_output(_gen(), args.output)
+    _ok(f"Generated: {count:,} phrase-initials variants")
 
 
 def cmd_leet(args: argparse.Namespace) -> None:
@@ -1635,6 +1811,23 @@ def interactive_menu() -> None:
             ns.output = input("  Output file (Enter for stdout): ").strip() or None
         cmd_reverse(ns)
 
+    elif choice == "24":
+        ns.phrase = input("  Phrase (e.g. 'é mais fácil pedir do que tentar quebrar'): ").strip()
+        ns.prefixes = input("  Extra prefixes (comma-sep, EMPTY for '', or Enter): ").strip() or None
+        ns.suffixes = input("  Extra suffixes (comma-sep, EMPTY for '', or Enter): ").strip() or None
+        cmd_phrase(ns)
+
+    elif choice == "25":
+        ns.password = input("  Existing password to mutate: ").strip()
+        ns.leet_mode = input("  Leet mode [basic/v2/v3/all/none] (default: all): ").strip() or "all"
+        ns.prefixes = input("  Extra prefixes (comma-sep, EMPTY for '', or Enter to use defaults): ").strip() or None
+        ns.suffixes = input("  Extra suffixes (comma-sep, EMPTY for '', or Enter to use defaults): ").strip() or None
+        min_raw = input("  Min length (default: 1): ").strip()
+        max_raw = input("  Max length (default: 128): ").strip()
+        ns.min_len = int(min_raw) if min_raw.isdigit() else 1
+        ns.max_len = int(max_raw) if max_raw.isdigit() else 128
+        cmd_mutate(ns)
+
     elif choice == "0":
         _info("Exiting wfh.py.")
         sys.exit(0)
@@ -1745,6 +1938,24 @@ def build_parser() -> argparse.ArgumentParser:
             "Applies to all generation commands."
         ),
     )
+    parser.add_argument(
+        "--min-len", dest="global_min_len", metavar="N", type=int, default=0,
+        help=(
+            "Global minimum entry length (default: 0 = no filter). "
+            "Entries shorter than N are discarded from all output. "
+            "Combined with per-command limits: most restrictive bound applies. "
+            "Example: --min-len 8 keeps only entries with 8+ characters."
+        ),
+    )
+    parser.add_argument(
+        "--max-len", dest="global_max_len", metavar="N", type=int, default=0,
+        help=(
+            "Global maximum entry length (default: 0 = no filter). "
+            "Entries longer than N are discarded from all output. "
+            "Combined with per-command limits: most restrictive bound applies. "
+            "Example: --max-len 16 discards entries longer than 16 characters."
+        ),
+    )
 
     sub = parser.add_subparsers(dest="command", help="Operation mode")
 
@@ -1755,7 +1966,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_cs.add_argument("charset", nargs="?", default="lalpha",
                        help="Charset: built-in name or direct character string")
     p_cs.add_argument("-f", "--charset-file", dest="charset_file", help=".cfg charset file")
-    p_cs.add_argument("-p", "--pattern", help="Pattern with Crunch-style placeholders (@,%,^,...)")
+    p_cs.add_argument("-p", "--pattern", help="Pattern with Crunch-style placeholders (@,%%,^,...)")
     p_cs.add_argument("--mask", metavar="MASK",
                        help="Hashcat-style mask (e.g. ?u?l?l?d?d?s — ?u=upper ?l=lower ?d=digit ?s=special ?a=all)")
     p_cs.add_argument("--custom-charset1", dest="custom_charset1", metavar="CHARS",
@@ -1970,6 +2181,67 @@ def build_parser() -> argparse.ArgumentParser:
     p_ex.add_argument("-o", "--output", help="Output file")
 
     # ── leet ─────────────────────────────────────────────────────────────
+    p_mut = sub.add_parser(
+        "mutate",
+        help="Generate mutations from an existing password (case, leet, prefix, suffix)",
+        description=(
+            "Given an existing password, generate all mutations:\n"
+            "case variants, leet substitutions, reversed, duplicated,\n"
+            "vowels stripped, and cartesian product with prefixes/suffixes.\n\n"
+            "Examples:\n"
+            "  wfh.py mutate \"1q2w3e4r\"\n"
+            "  wfh.py mutate \"minhasenha\" --leet-mode basic --min-len 8\n"
+            "  wfh.py mutate \"abc123\" --prefixes _,! --suffixes @0x90,#0x90,EMPTY\n"
+            "  wfh.py mutate \"senha\" --leet-mode none -o mutations.lst\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_mut.add_argument("password", help="Existing password to mutate")
+    p_mut.add_argument(
+        "--leet-mode", dest="leet_mode", default="all",
+        choices=["basic", "v2", "v3", "all", "none"],
+        help="Leet substitution table (default: all)",
+    )
+    p_mut.add_argument(
+        "--prefixes", metavar="P1,P2,...",
+        help="Extra prefixes (comma-separated). Use EMPTY for empty string.",
+    )
+    p_mut.add_argument(
+        "--suffixes", metavar="S1,S2,...",
+        help="Extra suffixes (comma-separated). Use EMPTY for empty string.",
+    )
+    p_mut.add_argument("--min-len", dest="min_len", type=int, default=1,
+                       help="Minimum result length (default: 1)")
+    p_mut.add_argument("--max-len", dest="max_len", type=int, default=128,
+                       help="Maximum result length (default: 128)")
+    p_mut.add_argument("-o", "--output", help="Output file")
+
+    p_phrase = sub.add_parser(
+        "phrase",
+        help="Generate passwords from phrase initials (acrostic mutations + @0x90 style)",
+        description=(
+            "Extract the first letter of each word in a phrase and generate\n"
+            "password variants with case mutations, leet substitutions, and\n"
+            "prefix/suffix combinations, including hacker patterns (@0x90, #0x90).\n\n"
+            "PT-BR: 'mais' is replaced by '+' (common informal shorthand).\n\n"
+            "Examples:\n"
+            "  wfh.py phrase \"é mais fácil pedir do que tentar quebrar\"\n"
+            "  wfh.py phrase \"minha empresa segura\" --suffixes @0x90,#0x90\n"
+            "  wfh.py phrase \"apenas um teste\" --prefixes _,__ -o out.lst\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_phrase.add_argument("phrase", help="Input phrase")
+    p_phrase.add_argument(
+        "--prefixes", metavar="P1,P2,...",
+        help="Extra prefixes (comma-separated). Use EMPTY for empty string.",
+    )
+    p_phrase.add_argument(
+        "--suffixes", metavar="S1,S2,...",
+        help="Extra suffixes (comma-separated). Use EMPTY for empty string.",
+    )
+    p_phrase.add_argument("-o", "--output", help="Output file")
+
     p_lt = sub.add_parser("leet", help="Leet speak variants")
     p_lt.add_argument("word", help="Base word")
     p_lt.add_argument("-m", "--mode", default="basic",
@@ -3189,6 +3461,8 @@ def main() -> None:
     global_use_ml  = not getattr(args, "no_ml_global", False)
     global_limit   = getattr(args, "limit", 0) or 0
     global_timeout = getattr(args, "timeout", 0) or 0
+    global_min_len = getattr(args, "global_min_len", 0) or 0
+    global_max_len = getattr(args, "global_max_len", 0) or 0
 
     # Validate and store thread count
     threads = validate_thread_count(raw_threads, clamp=True)
@@ -3198,6 +3472,16 @@ def main() -> None:
     _GLOBAL_CTX["limit"]        = global_limit
     _GLOBAL_CTX["timeout"]      = global_timeout
     _GLOBAL_CTX["start_time"]   = time.time()
+    _GLOBAL_CTX["min_len"]      = global_min_len
+    _GLOBAL_CTX["max_len"]      = global_max_len
+
+    if global_min_len or global_max_len:
+        parts = []
+        if global_min_len:
+            parts.append(f"min={global_min_len}")
+        if global_max_len:
+            parts.append(f"max={global_max_len}")
+        _info(f"Length filter active: {', '.join(parts)} (global)")
 
     # Initialize compute backend (lazy — only if any module uses it)
     if compute_mode != "auto" or threads > 1:
@@ -3259,6 +3543,8 @@ def main() -> None:
         "scrape-target": cmd_scrape_target,
         "br-names":      cmd_br_names,
         "iwlgen":        cmd_iwlgen,
+        "phrase":        cmd_phrase,
+        "mutate":        cmd_mutate,
     }
 
     handler = handlers.get(args.command)

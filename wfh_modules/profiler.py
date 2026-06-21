@@ -522,6 +522,291 @@ MULTI_CHAR_SPECIALS = [
     "$$", "**", "##", "!", "@", "#", "$", "*",
 ]
 
+# Hacker-culture suffixes (0x90 = NOP in x86 shellcode)
+HACKER_SUFFIXES: list[str] = [
+    "@0x90", "#0x90", "_0x90", "!0x90",
+    "@0x41", "#0x41", "@0x00", "_0x00",
+]
+
+# PT-BR informal shorthands used in phrase-initial extraction
+_BR_INITIALS_MAP: dict[str, str] = {
+    "mais": "+",   # "mais" (more) written as + in BR text messages
+}
+
+
+def phrase_initials_variants(
+    phrase: str,
+    extra_prefixes: list[str] | None = None,
+    extra_suffixes: list[str] | None = None,
+) -> list[str]:
+    """
+    Generate password variants from phrase initials (first letter of each word).
+
+    PT-BR informal shorthand: "mais" → "+" (common in text/SMS messages).
+    Applies case mutations, leet substitutions, and prefix/suffix combinations
+    including hacker-culture patterns like @0x90, #0x90.
+
+    Args:
+        phrase: Input phrase (e.g. "é mais fácil pedir do que tentar quebrar").
+        extra_prefixes: Additional prefixes to combine (added on top of defaults).
+        extra_suffixes: Additional suffixes to combine (added on top of defaults).
+
+    Returns:
+        Ordered unique list of password candidates.
+
+    Example::
+
+        phrase_initials_variants("é mais fácil pedir do que tentar quebrar")
+        # initials → "e+fpdqtq"
+        # variants → "E+FPDQTQ", "_E+FPDQTQ@0x90", "e+fpdqtq@123", ...
+    """
+    words = _split_words(phrase)
+    if not words:
+        return []
+
+    # Build initials with PT-BR informal shorthands
+    initials_chars: list[str] = []
+    for word in words:
+        clean = strip_accents(word.strip().lower())
+        if not clean:
+            continue
+        shorthand = _BR_INITIALS_MAP.get(clean)
+        if shorthand:
+            initials_chars.append(shorthand)
+        else:
+            initials_chars.append(clean[0])
+
+    if not initials_chars:
+        return []
+
+    raw = "".join(initials_chars)  # e.g. "e+fpdqtq"
+    n = len(raw)
+
+    def _block_case(s: str, block: int, start_upper: bool) -> str:
+        """Alternating blocks of `block` chars upper/lower (e.g. block=2 → UUllUUll...)."""
+        result = []
+        upper = start_upper
+        count = 0
+        for ch in s:
+            result.append(ch.upper() if upper else ch.lower())
+            if ch.isalpha():
+                count += 1
+                if count % block == 0:
+                    upper = not upper
+        return "".join(result)
+
+    # Case variants
+    base_variants: list[str] = list(dict.fromkeys([
+        raw,                                                   # e+fpdqtq
+        raw.upper(),                                           # E+FPDQTQ
+        raw.capitalize(),                                      # E+fpdqtq
+        # alternating upper/lower starting with upper (pos 0 → upper)
+        "".join(c.upper() if i % 2 == 0 else c.lower() for i, c in enumerate(raw)),
+        # alternating lower/upper starting with lower (pos 0 → lower)
+        "".join(c.lower() if i % 2 == 0 else c.upper() for i, c in enumerate(raw)),
+        # first half upper, second half lower
+        raw[:n // 2].upper() + raw[n // 2:].lower(),
+        # first half lower, second half upper
+        raw[:n // 2].lower() + raw[n // 2:].upper(),
+        # thirds: upper / lower / upper
+        raw[:n // 3].upper() + raw[n // 3: 2 * n // 3].lower() + raw[2 * n // 3:].upper()
+        if n >= 3 else raw.upper(),
+        # blocks of 2: UUllUUll... (generates E+FpdQTq style)
+        _block_case(raw, 2, True),
+        # blocks of 2: llUUllUU...
+        _block_case(raw, 2, False),
+        # blocks of 3: UUUlllUUU...
+        _block_case(raw, 3, True),
+    ]))
+
+    # Leet substitution variants
+    leet_variants: list[str] = []
+    for b in base_variants:
+        leet_v = "".join(LEET_BASIC.get(ch, ch) for ch in b)
+        if leet_v not in base_variants and leet_v != b:
+            leet_variants.append(leet_v)
+
+    all_bases = list(dict.fromkeys(base_variants + leet_variants))
+
+    prefixes: list[str] = ["", "_", "__", "@", "#", "!"] + (extra_prefixes or [])
+    suffixes: list[str] = [
+        "",
+        "@0x90", "#0x90", "_0x90", "!0x90",
+        "@0x41", "#0x41",
+        "@123", "#123", "_123", "!123",
+        "@2024", "#2024", "_2024",
+        "@2025", "#2025", "_2025",
+        "@!", "#!", "_!",
+    ] + (extra_suffixes or [])
+
+    results: list[str] = []
+    seen: set[str] = set()
+
+    for base in all_bases:
+        for pref in prefixes:
+            for suf in suffixes:
+                candidate = pref + base + suf
+                if candidate and candidate not in seen:
+                    seen.add(candidate)
+                    results.append(candidate)
+
+    return results
+
+
+# Leet tables used by password_variants (richer than LEET_BASIC)
+_LEET_V2: dict[str, str] = {
+    "a": "4", "A": "4",
+    "e": "3", "E": "3",
+    "i": "!", "I": "!",
+    "o": "0", "O": "0",
+    "s": "5", "S": "5",
+    "t": "+", "T": "+",
+    "l": "1", "L": "1",
+    "b": "6", "B": "6",
+    "g": "9", "G": "9",
+}
+
+_LEET_V3: dict[str, str] = {
+    "a": "@", "A": "@",
+    "i": "|", "I": "|",
+    "s": "$", "S": "$",
+    "b": "8", "B": "8",
+    "g": "9", "G": "9",
+    "t": "+", "T": "+",
+    "l": "|", "L": "|",
+}
+
+_VOWELS = set("aeiouAEIOU")
+
+
+def password_variants(
+    password: str,
+    extra_prefixes: list[str] | None = None,
+    extra_suffixes: list[str] | None = None,
+    leet_mode: str = "all",
+    min_len: int = 1,
+    max_len: int = 128,
+) -> list[str]:
+    """
+    Generate an exhaustive set of mutations from an existing password.
+
+    Mutations applied:
+    - Original as-is
+    - Case variants: lower, UPPER, Capitalize, alternating char, block-2, half/half
+    - Reversed string
+    - Duplicated (password+password)
+    - Vowels stripped
+    - Leet substitutions (basic, v2/v3 tables) on every case variant
+    - All bases × prefixes × suffixes (cartesian product)
+
+    Args:
+        password: Existing password to mutate.
+        extra_prefixes: Additional prefixes (adds to defaults). Use ``[""]`` to keep
+            only the empty prefix.
+        extra_suffixes: Additional suffixes (adds to defaults). Use ``[""]`` to keep
+            only the empty suffix.
+        leet_mode: ``"basic"``, ``"v2"``, ``"v3"``, ``"all"`` or ``"none"``.
+        min_len: Discard results shorter than this.
+        max_len: Discard results longer than this.
+
+    Returns:
+        Ordered unique list of password mutation candidates.
+
+    Example::
+
+        password_variants("1q2w3e4r")
+        # → "1q2w3e4r", "1Q2W3E4R", "_1q2w3e4r@0x90", "1q2w3e4r@123", ...
+    """
+    if not password:
+        return []
+
+    pw = password
+
+    # ── Base forms (case) ─────────────────────────────────────────────────────
+    n = len(pw)
+
+    def _block2_upper(s: str) -> str:
+        res, upper, cnt = [], True, 0
+        for c in s:
+            res.append(c.upper() if upper else c.lower())
+            if c.isalpha():
+                cnt += 1
+                if cnt % 2 == 0:
+                    upper = not upper
+        return "".join(res)
+
+    bases: list[str] = list(dict.fromkeys([
+        pw,
+        pw.lower(),
+        pw.upper(),
+        pw.capitalize(),
+        "".join(c.upper() if i % 2 == 0 else c.lower() for i, c in enumerate(pw)),
+        "".join(c.lower() if i % 2 == 0 else c.upper() for i, c in enumerate(pw)),
+        pw[:n // 2].upper() + pw[n // 2:].lower(),
+        pw[:n // 2].lower() + pw[n // 2:].upper(),
+        _block2_upper(pw),
+        pw[::-1],                                    # reversed
+        pw + pw,                                     # duplicated
+        "".join(c for c in pw if c not in _VOWELS), # vowels stripped
+    ]))
+
+    # ── Leet variants ─────────────────────────────────────────────────────────
+    def _apply(s: str, table: dict[str, str]) -> str:
+        return "".join(table.get(c, c) for c in s)
+
+    leet_tables: list[dict[str, str]] = []
+    if leet_mode in ("basic", "all"):
+        leet_tables.append(LEET_BASIC)
+    if leet_mode in ("v2", "all"):
+        leet_tables.append(_LEET_V2)
+    if leet_mode in ("v3", "all"):
+        leet_tables.append(_LEET_V3)
+
+    leet_extra: list[str] = []
+    for b in bases:
+        for table in leet_tables:
+            lv = _apply(b, table)
+            if lv not in bases and lv != b and lv not in leet_extra:
+                leet_extra.append(lv)
+
+    all_bases = list(dict.fromkeys(bases + leet_extra))
+
+    # ── Prefixes / suffixes ───────────────────────────────────────────────────
+    default_prefixes: list[str] = ["", "_", "__", "!", "@", "#", "0", "1", "my", "the"]
+    default_suffixes: list[str] = [
+        "",
+        "!", "@", "#", "$", "*", "?",
+        "1", "01", "12", "123", "1234", "12345",
+        "@123", "#123", "_123", "!123",
+        "@0x90", "#0x90", "_0x90", "!0x90",
+        "@0x41", "#0x41",
+        "@2020", "@2021", "@2022", "@2023", "@2024", "@2025", "@2026",
+        "#2024", "#2025", "_2024", "_2025",
+        "2024", "2025", "2026",
+        "@!", "#!", "_!",
+        "br", "@br", "_br",
+    ]
+
+    prefixes = list(dict.fromkeys(default_prefixes + (extra_prefixes or [])))
+    suffixes = list(dict.fromkeys(default_suffixes + (extra_suffixes or [])))
+
+    results: list[str] = []
+    seen: set[str] = set()
+
+    for base in all_bases:
+        for pref in prefixes:
+            for suf in suffixes:
+                candidate = pref + base + suf
+                if (
+                    candidate
+                    and candidate not in seen
+                    and min_len <= len(candidate) <= max_len
+                ):
+                    seen.add(candidate)
+                    results.append(candidate)
+
+    return results
+
 
 # ── Main generator ────────────────────────────────────────────────────────────
 

@@ -190,6 +190,8 @@ def fetch_url(url: str, timeout: int = 60) -> str | None:
 # DADOS HARDCODED — NordPass 2023/2024/2025 (ausentes na lista atual)
 # ---------------------------------------------------------------------------
 NORDPASS_NEW = [
+    # Phrase-initials + hacker suffix patterns
+    "_E+FpdQTq@0x90", "_E+FpdQTq#0x90", "_1q2w3e4r@0x90",
     "fera@123", "d@rKn3$$", "t3l3f0n3", "escola1234", "22446688", "gvt12345",
     "mudar123", "pedro123", "matheus123", "1q2w3e4r5t", "admin123",
     "Qwerty123", "qwerty123", "qwerty1",
