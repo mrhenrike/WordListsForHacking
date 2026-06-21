@@ -18,5 +18,5 @@ build/
 *.egg-info/
 *.egg
 
-# Lab datasets and generated lab files (never committed)
-labs/
+# Lab folder tracked, but subdirectories (datasets) are not
+labs/*/
