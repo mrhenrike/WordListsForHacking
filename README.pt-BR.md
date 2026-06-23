@@ -12,7 +12,7 @@
 <h1 align="center">WordListsForHacking</h1>
 
 <p align="center">
-  <a href="https://github.com/mrhenrike/WordListsForHacking/releases"><img src="https://img.shields.io/badge/version-2.4.0-blue?style=flat-square" alt="Version"></a>
+  <a href="https://github.com/mrhenrike/WordListsForHacking/releases"><img src="https://img.shields.io/badge/version-2.6.1-blue?style=flat-square" alt="Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
   <a href="https://www.python.org/"><img src="https://img.shields.io/badge/python-3.8%2B-yellow?style=flat-square" alt="Python"></a>
   <a href="https://github.com/mrhenrike/WordListsForHacking"><img src="https://img.shields.io/badge/platform-linux%20%7C%20windows%20%7C%20macos%20%7C%20termux-lightgrey?style=flat-square" alt="Platform"></a>
@@ -20,7 +20,7 @@
 </p>
 
 <p align="center">
-  Toolkit unificado de geração de wordlists para pentest autorizado, red team e treinamentos de segurança — 31 subcomandos em uma única CLI. Geração por charset/máscara, profiling pessoal e corporativo, scraping web (JS/CSS/PDF), OCR, parsing de documentos (PDF/XLSX/DOCX), leet speak, XOR crypto, DNS fuzzing, telefones, enumeração de usuários corporativos, padrões saúde/farmácia, base de credenciais default (IoT/ICS/SCADA/PLC/HMI), keyspace WiFi ISP, análise comportamental password-DNA, combinador de keywords, word mangling, merge e sanitização, ranking ML com corpus SecLists, análise estatística, <strong>gramática probabilística PCFG, geração Markov OMEN-style, geração por keyboard walks, auto-geração de regras hashcat, ataque PRINCE combinatorial e benchmarking de qualidade de wordlists.</strong>
+  Toolkit unificado de geração de wordlists para pentest autorizado, red team e treinamentos de segurança — 36 subcomandos em uma única CLI. Geração por charset/máscara, profiling pessoal e corporativo, scraping web (JS/CSS/PDF), OCR, parsing de documentos (PDF/XLSX/DOCX), leet speak, XOR crypto, DNS fuzzing, telefones, enumeração de usuários corporativos, padrões de credenciais para redes varejistas, base de credenciais default (IoT/ICS/SCADA/PLC/HMI), keyspace WiFi ISP, análise comportamental password-DNA, combinador de keywords, word mangling, merge e sanitização, ranking ML com corpus SecLists, análise estatística, gramática probabilística PCFG, geração Markov OMEN-style, geração por keyboard walks, auto-geração de regras hashcat, ataque PRINCE combinatorial, benchmarking de qualidade de wordlists, <strong>gerador de senhas por acrosstico de frases, motor de mutação de senha existente, gerador de variações dígito-para-texto (EN/PT/BR/ES), filtros globais de comprimento e verificação de espaço em disco.</strong>
 </p>
 
 <p align="center">
@@ -121,13 +121,18 @@ python wfh.py --help       # ajuda completa da CLI
 | 29 | `rulegen` | Auto-geração de arquivos .rule hashcat a partir de análise |
 | 30 | `benchmark` | Benchmarking de qualidade de wordlists (métricas MAYA) |
 | 31 | `prince` | Ataque PRINCE — combinação encadeada de elementos |
+| 32 | `phrase` | Gerador de senha por acróstico de frase (estilo `@0x90` / hacker-suffix) |
+| 33 | `mutate` | Motor de mutação de senha existente (case / leet / prefixo / sufixo) |
+| 34 | `pharma` | Padrões de credenciais para redes varejistas (marca+id, sistema+CNPJ, usernames) |
+| 35 | `br-names` | Gerador de usernames a partir de nomes brasileiros |
+| 36 | `num2text` | Gerador dígito-para-texto com variações de case/leet/separador (EN/PT/BR/ES) |
 
 > **Sintaxe detalhada e exemplos de cada subcomando:** [Wiki — Subcomandos](https://github.com/mrhenrike/WordListsForHacking/wiki)
 
 ### Flags Globais
 
 ```bash
-python wfh.py --threads 20 --compute cuda --no-ml <subcomando>
+python wfh.py --threads 20 --compute cuda --no-ml --min-len 8 --max-len 20 <subcomando>
 ```
 
 | Flag | Padrão | Descrição |
@@ -135,6 +140,8 @@ python wfh.py --threads 20 --compute cuda --no-ml <subcomando>
 | `--threads N` | `5` | Threads de trabalho (1–300) |
 | `--compute MODE` | `auto` | `auto` / `cpu` / `gpu` / `cuda` / `rocm` / `mps` / `hybrid` |
 | `--no-ml` | off | Desabilitar ranking ML |
+| `--min-len N` | `0` | Filtro global de comprimento mínimo (aplicado a todos os comandos) |
+| `--max-len N` | `0` | Filtro global de comprimento máximo (aplicado a todos os comandos) |
 | `-v` | off | Logging detalhado |
 
 ---
@@ -377,6 +384,90 @@ python wfh.py train --seclists /path/to/SecLists --seclists-categories password 
 O modelo armazena **apenas padrões estruturais** — sem PII, senhas ou nomes de empresa.
 
 > **Detalhes:** [Wiki — ML Model](https://github.com/mrhenrike/WordListsForHacking/wiki/ML-Model)
+
+---
+
+## Novidades v2.6 — Geradores Adicionais
+
+### Gerador de Senha por Acróstico de Frase
+
+Gera senhas a partir da primeira letra de cada palavra de uma frase, com mutações de case, leet e sufixos estilo hacker.
+
+```bash
+# Frase → acróstico + variações
+python wfh.py phrase "minha frase secreta corporativa" -o frase.lst
+
+# Com prefixos e sufixos personalizados
+python wfh.py phrase "é mais fácil pedir do que tentar quebrar" \
+    --prefixes _,__ --suffixes @0x90,#0x90 -o frase.lst
+```
+
+### Motor de Mutação de Senha Existente
+
+Gera variações exaustivas de uma senha base já conhecida.
+
+```bash
+# Mutar uma senha conhecida
+python wfh.py mutate "Verao2024" -o mutacoes.lst
+
+# Controlar profundidade leet e faixa de tamanho
+python wfh.py mutate "admin123" --leet-mode aggressive --min-len 10 --max-len 25 -o mutacoes.lst
+```
+
+### Gerador de Credenciais para Redes Varejistas
+
+Gera senhas e usernames seguindo padrões comuns em ambientes de varejo: marca + id-loja, sistema + CNPJ, prefixos de login internos.
+
+```bash
+# Senhas e usernames para uma marca
+python wfh.py pharma --brand AcmePharma --ids 1200-1210 -o pharma.lst
+
+# Só senhas, com CNPJ
+python wfh.py pharma --brand RetailCo --abbrevs RC,RET --cnpj 01234567890123 --mode passwords
+
+# Só usernames, domínio personalizado
+python wfh.py pharma --brand BrandX --ids 1000-2000 --domains corp.com.br --mode usernames
+```
+
+### Gerador Dígito-para-Texto
+
+Converte números (até 12 dígitos) para suas representações textuais com geração completa de variantes. Suporta EN, PT, BR (com formas femininas) e ES.
+
+```bash
+# Número único em inglês (padrão)
+python wfh.py num2text --number 123
+# → onetwothree, ONETWOTHREE, OneTwoThree, one-two-three, ...
+
+# Português brasileiro (inclui variantes femininas: uma, duas)
+python wfh.py num2text --number 12 --lang br
+# → umdois, umaduas, Um-Duas, um_duas, ...
+
+# Espanhol
+python wfh.py num2text --number 123 --lang es
+# → unodostres, UNODOSTRES, uno-dos-tres, una-dos-tres, ...
+
+# Range em lote, salvo em arquivo
+python wfh.py num2text --range 0-9999 --lang pt -o numeros_pt.lst
+python wfh.py num2text --range 2000-2030 --lang br -o anos_br.lst
+```
+
+Aliases aceitos para `--lang`:
+
+| Código | Aceita também | Idioma |
+|--------|--------------|--------|
+| `en` | `en-us`, `en-gb` | Inglês (padrão) |
+| `pt` | `pt-pt` | Português europeu |
+| `br` | `pt-br` | Português brasileiro |
+| `es` | `es-es`, `es-mx`, `es-la` | Espanhol |
+
+### Filtros Globais de Comprimento
+
+Aplica filtro de comprimento mínimo/máximo na saída de **qualquer** subcomando.
+
+```bash
+python wfh.py --min-len 8 --max-len 20 charset 8 12 -o filtrado.lst
+python wfh.py --min-len 10 mutate "admin" -o variantes_longas.lst
+```
 
 ---
 

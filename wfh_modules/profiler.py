@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import uuid
 from datetime import datetime, date
 from itertools import permutations as _permutations
 from pathlib import Path
@@ -142,6 +143,22 @@ def generate_year_range_tokens(
     return list(dict.fromkeys(tokens))
 
 
+def rolling_recent_year_tokens(lookback: int = 1) -> list[str]:
+    """
+    Current year and the previous ``lookback`` year(s), 4- and 2-digit forms.
+
+    Example (today=2026, lookback=1): ``2025``, ``25``, ``2026``, ``26``.
+    """
+    lookback = max(0, lookback)
+    current = date.today().year
+    out: list[str] = []
+    for y in range(current - lookback, current + 1):
+        ys = str(y)
+        out.append(ys)
+        out.append(ys[-2:])
+    return list(dict.fromkeys(out))
+
+
 def generate_suffix_range_tokens(
     start: int,
     end: int,
@@ -191,6 +208,10 @@ COMMON_SUFFIXES = [
 
 COMMON_PREFIXES = ["", "my", "the", "mr", "ms", "dr", "sr", "jr"]
 
+SPECIAL_PREFIXES = ["_", "__", "@", "#", "!", "$"]
+
+DEFAULT_OUTPUT_DIR = Path("/tmp")
+
 WORD_SEPARATORS = ["", ".", "-", "_", "@", "#", "!", "$"]
 
 LEET_BASIC: dict[str, str] = {
@@ -204,6 +225,34 @@ LEET_BASIC: dict[str, str] = {
     "b": "6", "B": "8",
     "g": "9", "G": "9",
     "z": "2", "Z": "2",
+}
+
+# Richer tables (shared with password_variants / profile leet modes)
+_LEET_V2: dict[str, str] = {
+    "a": "4", "A": "4",
+    "e": "3", "E": "3",
+    "i": "!", "I": "!",
+    "o": "0", "O": "0",
+    "s": "5", "S": "5",
+    "t": "+", "T": "+",
+    "l": "1", "L": "1",
+    "b": "6", "B": "6",
+    "g": "9", "G": "9",
+}
+
+_LEET_V3: dict[str, str] = {
+    "a": "@", "A": "@",
+    "i": "|", "I": "|",
+    "s": "$", "S": "$",
+    "b": "8", "B": "8",
+    "g": "9", "G": "9",
+    "t": "+", "T": "+",
+    "l": "|", "L": "|",
+}
+
+# Lowercase selective — patterns like d@ryu5
+_SELECTIVE_LEET_LOWER: dict[str, str] = {
+    "a": "@", "e": "3", "i": "1", "o": "0", "s": "5", "t": "7", "l": "1",
 }
 
 ACCENT_MAP: dict[str, str] = {
@@ -254,6 +303,85 @@ def strip_accents(text: str) -> str:
 def normalize(word: str) -> str:
     """Strip accents and remove non-alphanumeric chars except dashes/underscores."""
     return strip_accents(word.strip())
+
+
+def _block_case(s: str, block: int, start_upper: bool) -> str:
+    """Alternating blocks of `block` chars upper/lower (e.g. block=2 → UUllUUll...)."""
+    result: list[str] = []
+    upper = start_upper
+    count = 0
+    for ch in s:
+        result.append(ch.upper() if upper else ch.lower())
+        if ch.isalpha():
+            count += 1
+            if count % block == 0:
+                upper = not upper
+    return "".join(result)
+
+
+def _extended_case_variants(word: str) -> list[str]:
+    """Extra mixed-case styles beyond lower/upper/capitalize (e.g. OzzY, OzzY)."""
+    if not word or not any(c.isalpha() for c in word):
+        return []
+    clean = word
+    n = len(clean)
+    out: list[str] = [
+        "".join(c.upper() if i % 2 == 0 else c.lower() for i, c in enumerate(clean)),
+        "".join(c.lower() if i % 2 == 0 else c.upper() for i, c in enumerate(clean)),
+        _block_case(clean, 2, True),
+        _block_case(clean, 2, False),
+    ]
+    if n >= 2:
+        # Ozzy → OzzY (last letter upper)
+        out.append(clean[:-1].capitalize() + clean[-1].upper())
+        out.append(clean[0].upper() + clean[1:-1].lower() + clean[-1].upper())
+    if n >= 3:
+        out.append(
+            clean[: n // 3].upper()
+            + clean[n // 3: 2 * n // 3].lower()
+            + clean[2 * n // 3:].upper()
+        )
+    return list(dict.fromkeys(v for v in out if v and v != clean))
+
+
+def _slug_from_name(name: str) -> str:
+    """Build a filesystem-safe slug from a display name."""
+    slug = re.sub(r"[^\w\-]+", "_", strip_accents(name.strip()).lower()).strip("_")
+    return slug[:40] if slug else ""
+
+
+def default_profile_output_path(profile: dict) -> str:
+    """Default output path: /tmp/<name-slug>.lst or /tmp/profile_<random>.lst."""
+    slug = _slug_from_name(profile.get("full_name", "") or "")
+    if not slug:
+        slug = f"profile_{uuid.uuid4().hex[:8]}"
+    return str(DEFAULT_OUTPUT_DIR / f"{slug}.lst")
+
+
+def normalize_profile_output_path(raw: str, profile: dict) -> str:
+    """
+    Resolve interactive output path.
+
+    - Empty → auto name under /tmp
+    - Absolute path or path with directory → use as-is (mkdir on write)
+    - Bare filename → /tmp/<filename>
+    """
+    raw = (raw or "").strip()
+    if not raw:
+        return default_profile_output_path(profile)
+    p = Path(raw).expanduser()
+    if p.is_absolute() or p.parent != Path("."):
+        return str(p)
+    return str(DEFAULT_OUTPUT_DIR / p.name)
+
+
+def resolve_profile_output(cli_output: Optional[str], profile: dict) -> Optional[str]:
+    """CLI -o wins; else interactive output_path; else None (stdout)."""
+    if cli_output:
+        return cli_output
+    if profile.get("output_path"):
+        return profile["output_path"]
+    return None
 
 
 def get_zodiac(day: int, month: int) -> str:
@@ -327,7 +455,71 @@ def _split_words(text: str) -> list[str]:
     return [t for t in text.replace(",", " ").split() if t]
 
 
-def _word_variants(word: str, leet: bool = True) -> list[str]:
+def _leet_tables_for_mode(mode: str) -> list[dict[str, str]]:
+    """Return leet substitution tables for profile leet mode."""
+    mode = (mode or "basic").lower()
+    if mode in ("none", ""):
+        return []
+    if mode == "basic":
+        return [LEET_BASIC]
+    if mode == "medium":
+        return [LEET_BASIC, _LEET_V2]
+    return [LEET_BASIC, _LEET_V2, _LEET_V3]
+
+
+def _apply_leet(s: str, table: dict[str, str]) -> str:
+    return "".join(table.get(c, c) for c in s)
+
+
+def _keyword_abbreviations(text: str) -> list[str]:
+    """
+    Build acronym tokens from keywords (e.g. cyber security → CS).
+
+    Also handles camelCase (CyberSecurity → CS) and explicit short acronyms.
+    """
+    if not text or not text.strip():
+        return []
+    raw = strip_accents(text.strip())
+    compact = re.sub(r"[\s\-_/]+", "", raw)
+    found: list[str] = []
+
+    if 2 <= len(compact) <= 8 and compact.isalpha() and raw.upper() == raw:
+        found.append(compact.upper())
+
+    words = [w for w in re.split(r"[\s\-_/]+", raw) if w]
+    if len(words) >= 2:
+        initials = "".join(w[0] for w in words if w and w[0].isalpha())
+        if len(initials) >= 2:
+            found.append(initials.upper())
+
+    camel_parts = re.findall(r"[A-Z]?[a-z]+", raw)
+    if len(camel_parts) >= 2:
+        initials = "".join(p[0] for p in camel_parts if p)
+        if len(initials) >= 2:
+            found.append(initials.upper())
+
+    # Single compound: cybersecurity → cyber + security
+    lower = compact.lower()
+    for prefix, suffix in (
+        ("cyber", "security"), ("info", "sec"), ("net", "work"),
+        ("soft", "ware"), ("dev", "ops"), ("cyber", "sec"),
+    ):
+        if lower.startswith(prefix) and lower.endswith(suffix):
+            ab = (prefix[0] + suffix[0]).upper()
+            found.append(ab)
+            break
+
+    result: list[str] = []
+    seen: set[str] = set()
+    for a in found:
+        for v in (a.upper(), a.lower(), a.capitalize()):
+            if v not in seen:
+                seen.add(v)
+                result.append(v)
+    return result
+
+
+def _word_variants(word: str, leet: bool = True, leet_mode: str = "basic") -> list[str]:
     """
     Generate case and leet variants of a single word.
 
@@ -350,15 +542,31 @@ def _word_variants(word: str, leet: bool = True) -> list[str]:
         clean.upper(),
         clean.capitalize(),
         clean[0].upper() + clean[1:].lower() if len(clean) > 1 else clean.upper(),
+        *_extended_case_variants(clean),
     ]))
 
     if leet:
+        mode = leet_mode if leet_mode not in ("none", "") else "basic"
         for w in list(base):
-            leet_w = ""
-            for ch in w:
-                leet_w += LEET_BASIC.get(ch, ch)
-            if leet_w not in base and leet_w != w:
-                base.append(leet_w)
+            for table in _leet_tables_for_mode(mode):
+                leet_w = _apply_leet(w, table)
+                if leet_w not in base and leet_w != w:
+                    base.append(leet_w)
+            # d@ryu5 — lowercase selective substitutions
+            low = w.lower()
+            sel = _apply_leet(low, _SELECTIVE_LEET_LOWER)
+            if sel not in base and sel != low:
+                base.append(sel)
+            # D4RYU5 — uppercase numeric leet (medium/aggressive)
+            if mode in ("medium", "aggressive"):
+                up = w.upper()
+                v2 = _apply_leet(up, _LEET_V2)
+                if v2 not in base and v2 != up:
+                    base.append(v2)
+                # @-style on uppercase base: D@RYU$ etc.
+                v3 = _apply_leet(up, _LEET_V3)
+                if v3 not in base and v3 != up:
+                    base.append(v3)
 
     return base
 
@@ -582,19 +790,6 @@ def phrase_initials_variants(
     raw = "".join(initials_chars)  # e.g. "e+fpdqtq"
     n = len(raw)
 
-    def _block_case(s: str, block: int, start_upper: bool) -> str:
-        """Alternating blocks of `block` chars upper/lower (e.g. block=2 → UUllUUll...)."""
-        result = []
-        upper = start_upper
-        count = 0
-        for ch in s:
-            result.append(ch.upper() if upper else ch.lower())
-            if ch.isalpha():
-                count += 1
-                if count % block == 0:
-                    upper = not upper
-        return "".join(result)
-
     # Case variants
     base_variants: list[str] = list(dict.fromkeys([
         raw,                                                   # e+fpdqtq
@@ -653,29 +848,7 @@ def phrase_initials_variants(
     return results
 
 
-# Leet tables used by password_variants (richer than LEET_BASIC)
-_LEET_V2: dict[str, str] = {
-    "a": "4", "A": "4",
-    "e": "3", "E": "3",
-    "i": "!", "I": "!",
-    "o": "0", "O": "0",
-    "s": "5", "S": "5",
-    "t": "+", "T": "+",
-    "l": "1", "L": "1",
-    "b": "6", "B": "6",
-    "g": "9", "G": "9",
-}
-
-_LEET_V3: dict[str, str] = {
-    "a": "@", "A": "@",
-    "i": "|", "I": "|",
-    "s": "$", "S": "$",
-    "b": "8", "B": "8",
-    "g": "9", "G": "9",
-    "t": "+", "T": "+",
-    "l": "|", "L": "|",
-}
-
+# Leet tables alias — defined above near LEET_BASIC
 _VOWELS = set("aeiouAEIOU")
 
 
@@ -810,6 +983,419 @@ def password_variants(
 
 # ── Main generator ────────────────────────────────────────────────────────────
 
+def _prioritize_tokens_for_pairing(tokens: list[str]) -> list[str]:
+    """Names/words first, then year-suffix combos — keeps Daryus#OzzY25 reachable."""
+    names: list[str] = []
+    year_suffix: list[str] = []
+    other: list[str] = []
+    seen: set[str] = set()
+    for t in tokens:
+        if t in seen:
+            continue
+        seen.add(t)
+        if len(t) >= 4 and t[-2:].isdigit() and any(c.isalpha() for c in t[:-2]):
+            year_suffix.append(t)
+        elif len(t) >= 2 and not any(c.isdigit() for c in t):
+            names.append(t)
+        else:
+            other.append(t)
+    return names + year_suffix + other
+
+
+def _append_year_suffix_tokens(tokens: list[str], date_tokens: list[str]) -> list[str]:
+    """Build token+year combos (e.g. OzzY + 25 → OzzY25) for profile patterns."""
+    years_2 = [dt for dt in date_tokens if len(dt) == 2 and dt.isdigit()]
+    years_4 = [dt for dt in date_tokens if len(dt) == 4 and dt.isdigit()]
+    extra: list[str] = []
+    seen = set(tokens)
+    for tok in tokens:
+        if not tok or not tok[0].isalnum():
+            continue
+        for y in years_2:
+            combo = tok + y
+            if combo not in seen:
+                seen.add(combo)
+                extra.append(combo)
+        for y in years_4:
+            combo = tok + y[-2:]
+            if combo not in seen:
+                seen.add(combo)
+                extra.append(combo)
+            combo4 = tok + y
+            if combo4 not in seen:
+                seen.add(combo4)
+                extra.append(combo4)
+    return extra
+
+
+def _profile_combo_separators(
+    include_specials: bool,
+    with_spaces: bool,
+) -> tuple[list[str], list[tuple[str, str]], list[str]]:
+    """Separators and prefixes based on interactive generation options."""
+    single: list[str] = [""]
+    if include_specials:
+        single.extend(["@", "#", "_", "-", "!", ".", "$"])
+        dual: list[tuple[str, str]] = [
+            ("@", "#"), ("#", "@"), ("_", "@"), ("@", "@"),
+            ("#", "#"), ("_", "#"), ("!", "#"), ("@", "_"),
+        ]
+        prefixes = list(SPECIAL_PREFIXES)
+    else:
+        single.extend(["_", "-"])
+        dual = [("", ""), ("_", ""), ("", "_")]
+        prefixes = ["", "_"]
+
+    if with_spaces and " " not in single:
+        single.append(" ")
+
+    return single, dual, prefixes
+
+
+def _build_token_pool(
+    raw_values: list[str],
+    leet_mode: str,
+    *,
+    max_per_source: int = 12,
+) -> list[str]:
+    """
+    Plain + leet variants for each non-empty source string.
+
+    When leet_mode is ``none``, only plain case variants are included.
+    """
+    pool: list[str] = []
+    seen: set[str] = set()
+    do_leet = leet_mode not in ("none", "")
+
+    for raw in raw_values:
+        if not raw or not str(raw).strip():
+            continue
+        per_source = 0
+        for word in _split_words(str(raw)):
+            variants: list[str] = []
+            variants.extend(_word_variants(word, leet=False, leet_mode="none"))
+            if do_leet:
+                for v in _word_variants(word, leet=True, leet_mode=leet_mode):
+                    if v not in variants:
+                        variants.append(v)
+            for v in variants:
+                if v and v not in seen:
+                    seen.add(v)
+                    pool.append(v)
+                    per_source += 1
+                    if per_source >= max_per_source:
+                        break
+    return pool
+
+
+def _emit_pair_combos(
+    pool_a: list[str],
+    pool_b: list[str],
+    seps: list[str],
+    prefixes: list[str],
+    try_emit,
+) -> Generator[str, None, None]:
+    """Emit a+sep+b and b+sep+a (optional leading prefix)."""
+    if not pool_a or not pool_b:
+        return
+    for a in pool_a[:20]:
+        for b in pool_b[:22]:
+            if a.lower() == b.lower():
+                continue
+            for sep in seps:
+                for combo in (a + sep + b, b + sep + a):
+                    r = try_emit(combo)
+                    if r:
+                        yield r
+            for pref in prefixes:
+                if not pref:
+                    continue
+                for sep in seps:
+                    for combo in (pref + a + sep + b, pref + b + sep + a):
+                        r = try_emit(combo)
+                        if r:
+                            yield r
+
+
+def _emit_entity_date_combos(
+    entities: list[str],
+    dates: list[str],
+    seps: list[str],
+    prefixes: list[str],
+    try_emit,
+) -> Generator[str, None, None]:
+    """Entity + date and date + entity (Pet2026, 2026Pet, _Pet@26, …)."""
+    if not entities or not dates:
+        return
+    for ent in entities[:18]:
+        for dt in dates[:14]:
+            for sep in seps:
+                for combo in (ent + sep + dt, dt + sep + ent):
+                    r = try_emit(combo)
+                    if r:
+                        yield r
+            for pref in prefixes:
+                if not pref:
+                    continue
+                for sep in seps:
+                    for combo in (pref + ent + sep + dt, pref + dt + sep + ent):
+                        r = try_emit(combo)
+                        if r:
+                            yield r
+            # Concatenated suffix/prefix years (Pet26, Pet2026)
+            for combo in (ent + dt, dt + ent):
+                r = try_emit(combo)
+                if r:
+                    yield r
+
+
+def _emit_triple_combos(
+    pool_a: list[str],
+    mids: list[str],
+    pool_b: list[str],
+    dual_seps: list[tuple[str, str]],
+    prefixes: list[str],
+    try_emit,
+) -> Generator[str, None, None]:
+    """pref + A + sep1 + mid + sep2 + B  (_NOME@2026#Pet, _CORP@2026#Dept)."""
+    if not pool_a or not pool_b:
+        return
+    mid_list = [m for m in mids if m][:14]
+    if not mid_list:
+        return
+    for a in pool_a[:22]:
+        for mid in mid_list:
+            for b in pool_b[:14]:
+                if a.lower() == b.lower():
+                    continue
+                for pref in prefixes:
+                    for s1, s2 in dual_seps:
+                        combo = f"{pref}{a}{s1}{mid}{s2}{b}"
+                        r = try_emit(combo)
+                        if r:
+                            yield r
+
+
+def _emit_profile_relationship_combos(
+    profile: dict,
+    date_tokens: list[str],
+    min_len: int,
+    max_len: int,
+    seen: set[str],
+    *,
+    include_specials: bool = False,
+    with_spaces: bool = False,
+) -> Generator[str, None, None]:
+    """
+    Relationship-aware profile combos driven by filled wizard fields.
+
+    Covers: name↔corp, name↔nick, name↔pet, pet↔dates, partner↔dates,
+    children↔dates, _NOME@year#Pet, _CORP@year#Dept, _leet@year#SIGLA, etc.
+    Respects ``include_specials``, ``with_spaces``, and ``leet_mode``.
+    """
+    def _try_emit(s: str) -> Optional[str]:
+        if s and s not in seen and min_len <= len(s) <= max_len:
+            seen.add(s)
+            return s
+        return None
+
+    leet_mode = profile.get("leet_mode", "basic")
+    single_seps, dual_seps, prefixes = _profile_combo_separators(include_specials, with_spaces)
+
+    rolling = [
+        y for y in rolling_recent_year_tokens(int(profile.get("recent_years_lookback", 1)))
+        if y in date_tokens
+    ] or rolling_recent_year_tokens(1)
+
+    personal_dates = _date_tokens(
+        profile.get("birth_day", 0) or 0,
+        profile.get("birth_month", 0) or 0,
+        profile.get("birth_year", 0) or 0,
+    )
+    partner_dates = _date_tokens(
+        profile.get("partner_birth_day", 0) or 0,
+        profile.get("partner_birth_month", 0) or 0,
+        profile.get("partner_birth_year", 0) or 0,
+    )
+
+    # ── Token pools (only from filled profile sections) ───────
+    names = _build_token_pool([
+        profile.get("full_name", ""),
+        profile.get("short_name", ""),
+        profile.get("surname", ""),
+    ], leet_mode)
+
+    nicks = _build_token_pool(profile.get("nicknames", []), leet_mode)
+
+    domain = (profile.get("company_domain", "") or "").replace("https://", "").replace("http://", "")
+    domain_prefix = domain.split(".")[0] if domain else ""
+    corps = _build_token_pool([
+        profile.get("company_name", ""),
+        profile.get("company_legal", ""),
+        domain_prefix,
+    ], leet_mode)
+
+    depts = _build_token_pool([profile.get("company_department", "") or ""], leet_mode)
+
+    pets = _build_token_pool(profile.get("pets", []), leet_mode)
+
+    partners = _build_token_pool([
+        profile.get("partner_name", ""),
+        profile.get("partner_nick", ""),
+    ], leet_mode)
+
+    children: list[str] = []
+    child_date_map: list[tuple[list[str], list[str]]] = []
+    for child in profile.get("children", []):
+        cname = child.get("name", "")
+        if not cname:
+            continue
+        cpool = _build_token_pool([cname], leet_mode)
+        children.extend(cpool)
+        cdts = _date_tokens(
+            child.get("birth_day", 0) or 0,
+            child.get("birth_month", 0) or 0,
+            child.get("birth_year", 0) or 0,
+        )
+        child_date_map.append((cpool, cdts + rolling))
+
+    children = list(dict.fromkeys(children))
+
+    countries: list[str] = []
+    country_raw = (profile.get("location_country", "") or "").strip()
+    if country_raw and profile.get("include_country_variations", True):
+        from wfh_modules.country_tokens import country_word_tokens
+        countries = country_word_tokens(country_raw)
+        if leet_mode not in ("none", ""):
+            leet_extra: list[str] = []
+            for ct in countries[:18]:
+                if len(ct) <= 8:
+                    leet_extra.extend(
+                        v for v in _word_variants(ct, leet=True, leet_mode=leet_mode)
+                        if len(v) <= 14
+                    )
+            countries = list(dict.fromkeys(countries + leet_extra))
+
+    abbrs: list[str] = []
+    for src in (
+        *profile.get("keywords", []),
+        profile.get("company_department", "") or "",
+        profile.get("company_name", "") or "",
+        profile.get("company_legal", "") or "",
+    ):
+        abbrs.extend(_keyword_abbreviations(src))
+    abbrs = list(dict.fromkeys(abbrs))
+    if leet_mode not in ("none", ""):
+        abbrs_leet: list[str] = []
+        for ab in list(abbrs):
+            abbrs_leet.extend(_word_variants(ab, leet=True, leet_mode=leet_mode))
+        abbrs = list(dict.fromkeys(abbrs + abbrs_leet))
+
+    leet_names = [
+        t for t in names
+        if any(c in t for c in "@$!|+") or (any(c.isdigit() for c in t) and any(c.isalpha() for c in t))
+    ]
+
+    year_mids = list(dict.fromkeys(
+        [y for y in rolling if len(y) in (2, 4)]
+        + [y for y in personal_dates if len(y) in (2, 4)]
+        + [y for y in date_tokens if len(y) in (2, 4)][:10]
+    ))
+
+    all_dates = list(dict.fromkeys(rolling + personal_dates + partner_dates + [
+        d for d in date_tokens if d.isdigit() or "/" in d or "-" in d
+    ]))
+
+    # ── Pairwise relationships ────────────────────────────────
+    if names and corps:
+        yield from _emit_pair_combos(names, corps, single_seps, prefixes, _try_emit)
+
+    if names and nicks:
+        yield from _emit_pair_combos(names, nicks, single_seps, prefixes, _try_emit)
+
+    if names and pets:
+        yield from _emit_pair_combos(names, pets, single_seps, prefixes, _try_emit)
+
+    if names and abbrs:
+        yield from _emit_pair_combos(names, abbrs, single_seps, prefixes, _try_emit)
+
+    if corps and pets:
+        yield from _emit_pair_combos(corps, pets, single_seps, prefixes, _try_emit)
+
+    if corps and depts:
+        yield from _emit_pair_combos(corps, depts, single_seps, prefixes, _try_emit)
+
+    if corps and abbrs:
+        yield from _emit_pair_combos(corps, abbrs, single_seps, prefixes, _try_emit)
+
+    if names and countries:
+        yield from _emit_pair_combos(names, countries, single_seps, prefixes, _try_emit)
+
+    if countries and pets:
+        yield from _emit_pair_combos(countries, pets, single_seps, prefixes, _try_emit)
+
+    if countries and corps:
+        yield from _emit_pair_combos(countries, corps, single_seps, prefixes, _try_emit)
+
+    # ── Entity + date ─────────────────────────────────────────
+    if names:
+        yield from _emit_entity_date_combos(names, personal_dates + rolling, single_seps, prefixes, _try_emit)
+
+    if pets:
+        yield from _emit_entity_date_combos(pets, all_dates, single_seps, prefixes, _try_emit)
+
+    if partners:
+        yield from _emit_entity_date_combos(partners, partner_dates + rolling, single_seps, prefixes, _try_emit)
+
+    for cpool, cdts in child_date_map:
+        yield from _emit_entity_date_combos(cpool, cdts, single_seps, prefixes, _try_emit)
+
+    if children:
+        yield from _emit_entity_date_combos(children, all_dates, single_seps, prefixes, _try_emit)
+
+    if countries:
+        yield from _emit_entity_date_combos(countries, rolling + all_dates, single_seps, prefixes, _try_emit)
+
+    # ── Triple: _A@year#B ─────────────────────────────────────
+    if names and pets:
+        yield from _emit_triple_combos(names, year_mids, pets, dual_seps, prefixes, _try_emit)
+
+    if corps and pets:
+        yield from _emit_triple_combos(corps, year_mids, pets, dual_seps, prefixes, _try_emit)
+
+    if corps and depts:
+        yield from _emit_triple_combos(corps, year_mids, depts, dual_seps, prefixes, _try_emit)
+
+    if names and abbrs:
+        yield from _emit_triple_combos(names, year_mids, abbrs, dual_seps, prefixes, _try_emit)
+
+    if leet_names and abbrs:
+        yield from _emit_triple_combos(leet_names, year_mids, abbrs, dual_seps, prefixes, _try_emit)
+
+    if leet_names and pets:
+        yield from _emit_triple_combos(leet_names, year_mids, pets, dual_seps, prefixes, _try_emit)
+
+    if corps and abbrs:
+        yield from _emit_triple_combos(corps, year_mids, abbrs, dual_seps, prefixes, _try_emit)
+
+    if names and countries:
+        yield from _emit_triple_combos(names, year_mids, countries, dual_seps, prefixes, _try_emit)
+
+    if countries and pets:
+        yield from _emit_triple_combos(countries, year_mids, pets, dual_seps, prefixes, _try_emit)
+
+    # Name + year suffix concat (Daryus25, D4RYU52026)
+    for name in (names + leet_names)[:28]:
+        for y in year_mids:
+            r = _try_emit(name + y)
+            if r:
+                yield r
+
+
+# Backward-compatible alias
+_emit_profile_signature_combos = _emit_profile_relationship_combos
+
+
 def _emit_all(
     tokens: list[str],
     date_tokens: list[str],
@@ -864,14 +1450,69 @@ def _emit_all(
                     if r:
                         yield r
 
+    # Name/word + separator + token-with-year (Daryus#OzzY25)
+    name_like = [t for t in tokens if len(t) >= 3 and not any(c.isdigit() for c in t)][:20]
+    year_like_raw = [t for t in tokens if len(t) >= 4 and t[-2:].isdigit()]
+    # Prefer mixed-case year suffixes (OzzY25) before plain (Ozzy25)
+    year_like = sorted(
+        year_like_raw,
+        key=lambda t: (
+            0 if any(c.isupper() for c in t[:-2]) and any(c.islower() for c in t[:-2]) else 1,
+            len(t),
+        ),
+    )[:50]
+    for t1 in name_like:
+        for t2 in year_like:
+            if t1 == t2 or t2.startswith(t1):
+                continue
+            for sep in seps:
+                r = _try_emit(t1 + sep + t2)
+                if r:
+                    yield r
+
     # Token pair combinations (2-token permutations)
-    limit = min(len(tokens), 15)  # Cap to avoid combinatorial explosion
+    tokens = _prioritize_tokens_for_pairing(tokens)
+    limit = min(len(tokens), 40)  # Cap to avoid combinatorial explosion
     token_subset = tokens[:limit]
     for t1, t2 in _permutations(token_subset, 2):
         for sep in seps:
             r = _try_emit(t1 + sep + t2)
             if r:
                 yield r
+
+    # Multi-separator 3-part: Name@2026#Pet, Daryus#OzzY25-style (word + date + word)
+    multi_seps = ["@", "#", "_", "-", "!", "$", "."]
+    date_subset = date_tokens[:12]
+    word_subset = tokens[:30]
+    for t1 in word_subset:
+        for mid in date_subset:
+            for t2 in word_subset:
+                if t1 == t2:
+                    continue
+                for sep1 in multi_seps:
+                    for sep2 in multi_seps:
+                        for combo in (
+                            t1 + sep1 + mid + sep2 + t2,
+                            t1 + sep1 + t2 + sep2 + mid,
+                        ):
+                            r = _try_emit(combo)
+                            if r:
+                                yield r
+
+    # Leading special prefix + multi-sep (e.g. _DARYUS@2026#Pitty)
+    for pref in SPECIAL_PREFIXES:
+        if not pref:
+            continue
+        for t1 in word_subset:
+            for mid in date_subset:
+                for t2 in word_subset:
+                    if t1 == t2:
+                        continue
+                    for sep1 in multi_seps:
+                        for sep2 in multi_seps:
+                            r = _try_emit(pref + t1 + sep1 + mid + sep2 + t2)
+                            if r:
+                                yield r
 
     # 3-token combinations — use first 8 tokens only to limit volume
     limit3 = min(len(tokens), 8)
@@ -993,6 +1634,20 @@ def interactive_profile() -> dict:
     profile["location_city"] = _ask("City / hometown")
     profile["location_state"] = _ask("State / province / region")
     profile["location_country"] = _ask("Country")
+    if profile.get("location_country"):
+        from wfh_modules.country_tokens import resolve_country, country_display_name
+        _country_key = resolve_country(profile["location_country"])
+        if _country_key:
+            profile["location_country_key"] = _country_key
+            print(f"  → Country resolved: {country_display_name(_country_key)} ({_country_key})")
+        print("  Country tokens — two modes:")
+        print("    Full    → ISO (BR), names (Brasil/Brazil), DDI (55), leet, combos with name/corp/dates")
+        print("    Minimal → ISO + country name only (fewer entries, recommended if list grows too large)")
+        profile["include_country_variations"] = _ask(
+            "Include full country variations? [Y/n]"
+        ).lower() not in ("n", "no")
+    else:
+        profile["include_country_variations"] = False
 
     # ── Partner ───────────────────────────────────────────────
     print("\n[ PARTNER / SPOUSE ]")
@@ -1038,6 +1693,7 @@ def interactive_profile() -> dict:
     if has_corp:
         profile["company_name"] = _ask("Company name / trade name")
         profile["company_legal"] = _ask("Legal company name (razão social)")
+        profile["company_department"] = _ask("Department / team / role (e.g. Cyber Security, SOC)")
         profile["company_email"] = _ask("Corporate email")
         profile["company_domain"] = _ask("Company domain (e.g. company.com)")
 
@@ -1098,6 +1754,18 @@ def interactive_profile() -> dict:
     profile["min_len"] = int(min_raw) if min_raw.isdigit() else 6
     profile["max_len"] = int(max_raw) if max_raw.isdigit() and int(max_raw) > 0 else 32
     profile["include_specials"] = _ask("Add special characters to combinations? [y/N]").lower() in ("y", "yes")
+    print("  Note: current/previous year suffixes (e.g. 25, 2025, 26, 2026) are added automatically.")
+
+    # ── Output file ───────────────────────────────────────────
+    print("\n[ OUTPUT FILE ]")
+    default_out = default_profile_output_path(profile)
+    print(f"  Leave blank to use default: {default_out}")
+    print("  Enter a full path, or just a filename (saved under /tmp).")
+    out_raw = _ask("Output file path")
+    profile["output_path"] = normalize_profile_output_path(out_raw, profile)
+    print(f"  → Will save to: {profile['output_path']}")
+
+    profile["interactive_mode"] = True
 
     return profile
 
@@ -1359,7 +2027,14 @@ def generate_from_profile(
     def add_words(text: str) -> None:
         """Add all word variants from a text string."""
         for word in _split_words(text):
-            for variant in _word_variants(word, leet=do_leet):
+            for variant in _word_variants(word, leet=do_leet, leet_mode=use_leet):
+                if variant and variant not in word_tokens:
+                    word_tokens.append(variant)
+
+    def add_abbreviations(text: str) -> None:
+        """Add acronym tokens from multi-word keywords (cyber security → CS)."""
+        for ab in _keyword_abbreviations(text):
+            for variant in _word_variants(ab, leet=do_leet, leet_mode=use_leet):
                 if variant and variant not in word_tokens:
                     word_tokens.append(variant)
 
@@ -1433,7 +2108,23 @@ def generate_from_profile(
     # Location
     add_words(profile.get("location_city", ""))
     add_words(profile.get("location_state", ""))
-    add_words(profile.get("location_country", ""))
+    country_raw = (profile.get("location_country", "") or "").strip()
+    if country_raw:
+        from wfh_modules.country_tokens import (
+            country_word_tokens,
+            country_minimal_tokens,
+            resolve_country,
+        )
+        ckey = resolve_country(country_raw)
+        if ckey:
+            profile["location_country_key"] = ckey
+        if profile.get("include_country_variations", True):
+            for ctok in country_word_tokens(country_raw):
+                add_words(ctok)
+        else:
+            for ctok in country_minimal_tokens(country_raw):
+                if ctok and ctok not in word_tokens:
+                    word_tokens.append(ctok)
 
     # Partner
     add_words(profile.get("partner_name", ""))
@@ -1460,6 +2151,10 @@ def generate_from_profile(
     # Corporate
     add_words(profile.get("company_name", ""))
     add_words(profile.get("company_legal", ""))
+    dept = profile.get("company_department", "") or ""
+    if dept:
+        add_words(dept)
+        add_abbreviations(dept)
     email = profile.get("company_email", "")
     if email:
         word_tokens.append(email)
@@ -1476,9 +2171,16 @@ def generate_from_profile(
             if hv not in word_tokens:
                 word_tokens.append(hv)
 
-    # Keywords
+    # Keywords + acronyms (cyber security → CS)
     for kw in profile.get("keywords", []):
         add_words(kw)
+        add_abbreviations(kw)
+
+    # Corporate acronyms from company name
+    for corp_field in ("company_name", "company_legal", "company_department"):
+        corp_val = profile.get(corp_field, "")
+        if corp_val:
+            add_abbreviations(corp_val)
 
     # Religion tokens (church/group names as word tokens)
     church = (profile.get("church_name") or "").strip()
@@ -1500,6 +2202,13 @@ def generate_from_profile(
             clean_sd = re.sub(r"\D", "", sd)
             if clean_sd and clean_sd not in all_date_tokens:
                 all_date_tokens.append(clean_sd)
+
+    # ── Rolling recent years (current + previous): 25, 2025, 26, 2026 ──
+    if profile.get("include_recent_years", True):
+        lookback = int(profile.get("recent_years_lookback", 1))
+        for yt in rolling_recent_year_tokens(lookback):
+            if yt not in all_date_tokens:
+                all_date_tokens.append(yt)
 
     # ── Year range tokens (--year-start / --year-end) ─────────
     y_start = profile.get("year_start")
@@ -1547,11 +2256,23 @@ def generate_from_profile(
     if include_specials:
         seps.extend(["&", "*", "(", ")", "+", "=", "~"])
 
+    # Token + year suffixes (OzzY25, Name2026, ...)
+    word_tokens = list(dict.fromkeys(
+        word_tokens + _append_year_suffix_tokens(word_tokens, all_date_tokens)
+    ))
+
     # ── Emit all token combinations ───────────────────────────
     yield from _emit_all(
         word_tokens, all_date_tokens,
         seps, effective_min, effective_max,
         with_spaces, seen, depth=depth,
+    )
+
+    # ── Relationship combos (_NOME@2026#Pet, name↔corp, pet↔dates, …) ──
+    yield from _emit_profile_relationship_combos(
+        profile, all_date_tokens, effective_min, effective_max, seen,
+        include_specials=include_specials,
+        with_spaces=with_spaces,
     )
 
     # ── Behavioral/religious patterns from JSON DB ────────────

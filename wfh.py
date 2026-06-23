@@ -83,7 +83,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "2.6.0"
+VERSION = "2.6.1"
 
 # ── Graceful shutdown ──────────────────────────────────────────────────────────
 _SHUTDOWN_REQUESTED = False
@@ -193,6 +193,7 @@ def _write_output(
     max_len: int = 9999,
     append: bool = False,
     stream: bool = False,
+    avg_entry_len: int = 14,
 ) -> int:
     """
     Write generator output to file or stdout with optional progress bar.
@@ -228,7 +229,7 @@ def _write_output(
     if output:
         out_path = Path(output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        if not _check_disk_space(output, estimate=estimate):
+        if not _check_disk_space(output, estimate=estimate, avg_entry_len=avg_entry_len):
             _warn("Cancelled by user — no file written.")
             return 0
         mode = "a" if append else "w"
@@ -283,6 +284,94 @@ def _write_output(
             f.close()
 
     return count
+
+
+def _effective_len_bounds(min_len: int = 0, max_len: int = 9999) -> tuple[int, int]:
+    """Merge profile/command bounds with global --min-len / --max-len."""
+    g_min = _GLOBAL_CTX.get("min_len", 0) or 0
+    g_max = _GLOBAL_CTX.get("max_len", 0) or 0
+    if g_min > 0:
+        min_len = max(min_len, g_min)
+    if g_max > 0:
+        max_len = min(max_len, g_max) if max_len > 0 else g_max
+    return min_len, max_len
+
+
+def _count_generator_entries(
+    generator: Generator[str, None, None],
+    min_len: int = 0,
+    max_len: int = 9999,
+) -> tuple[int, int, float]:
+    """
+    Count filtered generator output without writing.
+
+    Returns:
+        (entry_count, total_bytes_including_newlines, avg_line_length)
+    """
+    min_len, max_len = _effective_len_bounds(min_len, max_len)
+    count = 0
+    total_bytes = 0
+    for word in generator:
+        if not word:
+            continue
+        if min_len and len(word) < min_len:
+            continue
+        if max_len and len(word) > max_len:
+            continue
+        count += 1
+        total_bytes += len(word.encode("utf-8")) + 1
+    avg = total_bytes / count if count else 0.0
+    return count, total_bytes, avg
+
+
+def _profile_preview_and_confirm(
+    profile: dict,
+    leet_mode: str,
+    output_path: str,
+) -> Optional[tuple[int, float]]:
+    """
+    Count profile entries, show size summary, optionally ask to proceed.
+
+    Returns:
+        (count, avg_line_bytes) if user proceeds, None if cancelled.
+    """
+    from wfh_modules.profiler import generate_from_profile
+
+    min_len = int(profile.get("min_len", 6) or 0)
+    max_len = int(profile.get("max_len", 32) or 0) or 9999
+
+    _info("Estimating wordlist — counting entries (this may take a moment)...")
+    gen = generate_from_profile(profile, leet_mode=leet_mode)
+    count, total_bytes, avg_len = _count_generator_entries(gen, min_len, max_len)
+
+    print()
+    print("  ┌─ Wordlist preview ─────────────────────────")
+    print(f"  │  Entries (lines) : {count:,}")
+    print(f"  │  Est. file size  : {_format_bytes(total_bytes)}")
+    print(f"  │  Avg line length : {avg_len:.1f} chars")
+    print(f"  │  Output file     : {output_path}")
+    if profile.get("location_country") and not profile.get("include_country_variations", True):
+        print("  │  Country mode    : minimal (ISO + name only)")
+    elif profile.get("location_country"):
+        print("  │  Country mode    : full variations (ISO, names, DDI, leet, combos)")
+    print("  └────────────────────────────────────────────")
+    print()
+
+    ask = profile.get("interactive_mode", False)
+    if ask:
+        try:
+            resp = input("  Generate and save this wordlist? [Y/n]: ").strip().lower()
+            if resp in ("n", "no"):
+                _warn("Cancelled by user — no file written.")
+                return None
+        except (KeyboardInterrupt, EOFError):
+            _warn("Cancelled — no file written.")
+            return None
+    elif count == 0:
+        _warn("No entries matched the current filters — nothing to write.")
+        return None
+
+    return count, avg_len
 
 
 def _format_bytes(n: int) -> str:
@@ -494,7 +583,7 @@ def cmd_pattern(args: argparse.Namespace) -> None:
 
 def cmd_profile(args: argparse.Namespace) -> None:
     """Handler for personal profiling mode."""
-    from wfh_modules.profiler import interactive_profile, generate_from_profile
+    from wfh_modules.profiler import interactive_profile, generate_from_profile, resolve_profile_output
 
     # ── Load from YAML file ──────────────────────────────────────────────────
     if getattr(args, "profile_file", None):
@@ -562,10 +651,31 @@ def cmd_profile(args: argparse.Namespace) -> None:
         profile["siblings"] = args.siblings
 
     leet_mode = getattr(args, "leet", "basic") or profile.get("leet_mode", "basic")
-    _info(f"Generating wordlist from profile [leet={leet_mode}]...")
-    gen = generate_from_profile(profile, leet_mode=leet_mode)
-    count = _write_output(gen, args.output)
-    _ok(f"Generated: {count:,} entries")
+    output = resolve_profile_output(getattr(args, "output", None), profile)
+
+    if output:
+        preview = _profile_preview_and_confirm(profile, leet_mode, output)
+        if preview is None:
+            return
+        est_count, avg_len = preview
+        _info(f"Generating wordlist from profile [leet={leet_mode}]...")
+        gen = generate_from_profile(profile, leet_mode=leet_mode)
+        count = _write_output(
+            gen, output,
+            estimate=est_count,
+            min_len=int(profile.get("min_len", 0) or 0),
+            max_len=int(profile.get("max_len", 0) or 0),
+            avg_entry_len=max(1, int(avg_len)),
+        )
+        if count:
+            _ok(f"Generated: {count:,} entries → {output}")
+        else:
+            _warn("No entries written.")
+    else:
+        _info(f"Generating wordlist from profile [leet={leet_mode}]...")
+        gen = generate_from_profile(profile, leet_mode=leet_mode)
+        count = _write_output(gen, None)
+        _ok(f"Generated: {count:,} entries (stdout — use -o or interactive output prompt to save)")
 
 
 def cmd_corp(args: argparse.Namespace) -> None:
