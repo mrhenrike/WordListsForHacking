@@ -71,6 +71,11 @@ def load_profile_yaml(filepath: str) -> dict:
         birth_year: 1990
         pets:
           - "Rex"
+          - name: "Ozzy"
+            year: 2025
+        pet_adoptions:
+          - name: "Pitty"
+            year: 2026
         keywords:
           - "soccer"
           - "hacker"
@@ -116,7 +121,140 @@ def load_profile_yaml(filepath: str) -> dict:
         elif val is None:
             data[list_field] = []
 
+    data = _normalize_profile_pets(data)
     return data
+
+
+def _normalize_pet_entries(
+    pets_raw: list,
+) -> tuple[list[str], dict[str, list[str]]]:
+    """
+    Parse pet list entries (plain strings or dicts with adoption year).
+
+    Returns:
+        (pet names, map of lower(name) → year token strings e.g. ["2025", "25"])
+    """
+    names: list[str] = []
+    year_map: dict[str, list[str]] = {}
+
+    for item in pets_raw or []:
+        if isinstance(item, dict):
+            name = (item.get("name") or item.get("pet") or "").strip()
+            if not name:
+                continue
+            names.append(name)
+            yr_raw = item.get("year") or item.get("since") or item.get("adoption_year")
+            if yr_raw is not None and str(yr_raw).strip().isdigit():
+                ys = str(int(str(yr_raw).strip()))
+                if len(ys) == 4:
+                    year_map[name.lower()] = list(dict.fromkeys([ys, ys[-2:]]))
+        elif isinstance(item, str) and item.strip():
+            names.append(item.strip())
+
+    return names, year_map
+
+
+def _normalize_profile_pets(data: dict) -> dict:
+    """Merge ``pet_adoptions`` into ``pets`` and keep dict entries intact."""
+    pets_raw = list(data.get("pets") or [])
+    for adop in data.get("pet_adoptions") or []:
+        if isinstance(adop, dict) and (adop.get("name") or adop.get("pet")):
+            pets_raw.append(adop)
+    data["pets"] = pets_raw
+    return data
+
+
+def _build_pets_relationship_pool(
+    profile: dict,
+    leet_mode: str,
+    year_mids: list[str],
+) -> list[str]:
+    """
+    Pet tokens for relationship combos, including rolling year suffixes
+    (25, 2025, 26, 2026) and optional per-pet adoption years.
+
+    Enables patterns like ``Daryus#OzZY25`` (corp + pet + year suffix).
+    """
+    pets_raw = profile.get("pets") or []
+    names, year_map = _normalize_pet_entries(pets_raw)
+
+    for adop in profile.get("pet_adoptions") or []:
+        if not isinstance(adop, dict):
+            continue
+        aname = (adop.get("name") or adop.get("pet") or "").strip()
+        yr_raw = adop.get("year") or adop.get("since") or adop.get("adoption_year")
+        if aname and yr_raw is not None and str(yr_raw).strip().isdigit():
+            ys = str(int(str(yr_raw).strip()))
+            if len(ys) == 4:
+                year_map[aname.lower()] = list(dict.fromkeys([ys, ys[-2:]]))
+
+    if not names:
+        return []
+
+    do_leet = leet_mode not in ("none", "")
+    base: list[str] = []
+    seen: set[str] = set()
+    for pet_name in names:
+        for variant in _word_variants(pet_name, leet=do_leet, leet_mode=leet_mode):
+            if variant and variant not in seen:
+                seen.add(variant)
+                base.append(variant)
+
+    rolling_years = [y for y in year_mids if len(y) in (2, 4)]
+    adoption_priority: list[str] = []
+
+    for pet_name in names:
+        pyears = year_map.get(pet_name.lower(), [])
+        if not pyears:
+            continue
+        pet_tokens: list[str] = []
+        for variant in _word_variants(pet_name, leet=do_leet, leet_mode=leet_mode):
+            if variant and variant not in pet_tokens:
+                pet_tokens.append(variant)
+        for tok in _append_year_suffix_tokens(pet_tokens, pyears):
+            if tok not in seen:
+                seen.add(tok)
+                adoption_priority.append(tok)
+
+    extended = list(base)
+    for tok in _append_year_suffix_tokens(base, rolling_years):
+        if tok not in seen:
+            seen.add(tok)
+            extended.append(tok)
+
+    return list(dict.fromkeys(base + adoption_priority + [t for t in extended if t not in base]))
+
+
+def _build_corp_relationship_pool(profile: dict, leet_mode: str) -> list[str]:
+    """Company tokens with full leet/case variants (not truncated per-source)."""
+    domain = (profile.get("company_domain", "") or "").replace("https://", "").replace("http://", "")
+    domain_prefix = domain.split(".")[0] if domain else ""
+    sources = [
+        profile.get("company_name", "") or "",
+        profile.get("company_legal", "") or "",
+        domain_prefix,
+    ]
+    pool = _build_token_pool([s for s in sources if s], leet_mode, max_per_source=24)
+    seen = set(pool)
+    do_leet = leet_mode not in ("none", "")
+    for src in sources:
+        if not src or not str(src).strip():
+            continue
+        for word in _split_words(str(src)):
+            for variant in _word_variants(word, leet=do_leet, leet_mode=leet_mode):
+                if variant and variant not in seen:
+                    seen.add(variant)
+                    pool.append(variant)
+    return pool
+
+
+def _leet_token_filter(pool: list[str]) -> list[str]:
+    """Tokens containing leet substitutions (``@``, digits+letters, etc.)."""
+    return [
+        t for t in pool
+        if any(c in t for c in "@$!|+")
+        or (any(c.isdigit() for c in t) and any(c.isalpha() for c in t))
+    ]
 
 
 def generate_year_range_tokens(
@@ -335,6 +473,9 @@ def _extended_case_variants(word: str) -> list[str]:
         # Ozzy → OzzY (last letter upper)
         out.append(clean[:-1].capitalize() + clean[-1].upper())
         out.append(clean[0].upper() + clean[1:-1].lower() + clean[-1].upper())
+    if n >= 4:
+        # Ozzy → OzZY (last two letters upper — common pet-password style)
+        out.append(clean[0].upper() + clean[1:-2].lower() + clean[-2].upper() + clean[-1].upper())
     if n >= 3:
         out.append(
             clean[: n // 3].upper()
@@ -1099,7 +1240,7 @@ def _emit_pair_combos(
     if not pool_a or not pool_b:
         return
     for a in pool_a[:20]:
-        for b in pool_b[:22]:
+        for b in pool_b[:40]:
             if a.lower() == b.lower():
                 continue
             for sep in seps:
@@ -1165,7 +1306,7 @@ def _emit_triple_combos(
         return
     for a in pool_a[:22]:
         for mid in mid_list:
-            for b in pool_b[:14]:
+            for b in pool_b[:32]:
                 if a.lower() == b.lower():
                     continue
                 for pref in prefixes:
@@ -1229,15 +1370,21 @@ def _emit_profile_relationship_combos(
 
     domain = (profile.get("company_domain", "") or "").replace("https://", "").replace("http://", "")
     domain_prefix = domain.split(".")[0] if domain else ""
-    corps = _build_token_pool([
-        profile.get("company_name", ""),
-        profile.get("company_legal", ""),
-        domain_prefix,
-    ], leet_mode)
+    corps = _build_corp_relationship_pool(profile, leet_mode)
 
     depts = _build_token_pool([profile.get("company_department", "") or ""], leet_mode)
 
-    pets = _build_token_pool(profile.get("pets", []), leet_mode)
+    year_mids = list(dict.fromkeys(
+        [y for y in rolling if len(y) in (2, 4)]
+        + [y for y in personal_dates if len(y) in (2, 4)]
+        + [y for y in date_tokens if len(y) in (2, 4)][:10]
+    ))
+
+    pets = _build_pets_relationship_pool(profile, leet_mode, year_mids)
+    pets_plain = _build_token_pool(
+        _normalize_pet_entries(profile.get("pets") or [])[0], leet_mode,
+    )
+    leet_corps = _leet_token_filter(corps)
 
     partners = _build_token_pool([
         profile.get("partner_name", ""),
@@ -1291,16 +1438,7 @@ def _emit_profile_relationship_combos(
             abbrs_leet.extend(_word_variants(ab, leet=True, leet_mode=leet_mode))
         abbrs = list(dict.fromkeys(abbrs + abbrs_leet))
 
-    leet_names = [
-        t for t in names
-        if any(c in t for c in "@$!|+") or (any(c.isdigit() for c in t) and any(c.isalpha() for c in t))
-    ]
-
-    year_mids = list(dict.fromkeys(
-        [y for y in rolling if len(y) in (2, 4)]
-        + [y for y in personal_dates if len(y) in (2, 4)]
-        + [y for y in date_tokens if len(y) in (2, 4)][:10]
-    ))
+    leet_names = _leet_token_filter(names)
 
     all_dates = list(dict.fromkeys(rolling + personal_dates + partner_dates + [
         d for d in date_tokens if d.isdigit() or "/" in d or "-" in d
@@ -1328,6 +1466,9 @@ def _emit_profile_relationship_combos(
     if corps and abbrs:
         yield from _emit_pair_combos(corps, abbrs, single_seps, prefixes, _try_emit)
 
+    if leet_corps and abbrs:
+        yield from _emit_pair_combos(leet_corps, abbrs, single_seps, prefixes, _try_emit)
+
     if names and countries:
         yield from _emit_pair_combos(names, countries, single_seps, prefixes, _try_emit)
 
@@ -1341,8 +1482,8 @@ def _emit_profile_relationship_combos(
     if names:
         yield from _emit_entity_date_combos(names, personal_dates + rolling, single_seps, prefixes, _try_emit)
 
-    if pets:
-        yield from _emit_entity_date_combos(pets, all_dates, single_seps, prefixes, _try_emit)
+    if pets_plain:
+        yield from _emit_entity_date_combos(pets_plain, all_dates, single_seps, prefixes, _try_emit)
 
     if partners:
         yield from _emit_entity_date_combos(partners, partner_dates + rolling, single_seps, prefixes, _try_emit)
@@ -1363,6 +1504,9 @@ def _emit_profile_relationship_combos(
     if corps and pets:
         yield from _emit_triple_combos(corps, year_mids, pets, dual_seps, prefixes, _try_emit)
 
+    if leet_corps and pets:
+        yield from _emit_triple_combos(leet_corps, year_mids, pets, dual_seps, prefixes, _try_emit)
+
     if corps and depts:
         yield from _emit_triple_combos(corps, year_mids, depts, dual_seps, prefixes, _try_emit)
 
@@ -1378,14 +1522,17 @@ def _emit_profile_relationship_combos(
     if corps and abbrs:
         yield from _emit_triple_combos(corps, year_mids, abbrs, dual_seps, prefixes, _try_emit)
 
+    if leet_corps and abbrs:
+        yield from _emit_triple_combos(leet_corps, year_mids, abbrs, dual_seps, prefixes, _try_emit)
+
     if names and countries:
         yield from _emit_triple_combos(names, year_mids, countries, dual_seps, prefixes, _try_emit)
 
     if countries and pets:
         yield from _emit_triple_combos(countries, year_mids, pets, dual_seps, prefixes, _try_emit)
 
-    # Name + year suffix concat (Daryus25, D4RYU52026)
-    for name in (names + leet_names)[:28]:
+    # Name/corp + year suffix concat (Daryus25, D4RYU52026)
+    for name in (names + leet_names + corps + leet_corps)[:36]:
         for y in year_mids:
             r = _try_emit(name + y)
             if r:
@@ -1683,9 +1830,19 @@ def interactive_profile() -> dict:
 
     # ── Pets ──────────────────────────────────────────────────
     print("\n[ PETS ]")
+    print("  Tip: adoption year enables corp#Pet25 patterns (e.g. Daryus#OzZY25).")
     has_pets = _ask("Add pet data? [y/N]").lower() in ("y", "yes")
     if has_pets:
-        profile["pets"] = _ask_multi("Pet names")
+        profile["pets"] = []
+        while True:
+            pet_name = _ask("Pet name (or Enter to stop)")
+            if not pet_name:
+                break
+            pet_year = _ask(f"  {pet_name} adoption/since year (YYYY, or Enter to skip)")
+            if pet_year.strip().isdigit() and len(pet_year.strip()) == 4:
+                profile["pets"].append({"name": pet_name, "year": int(pet_year.strip())})
+            else:
+                profile["pets"].append(pet_name)
 
     # ── Corporate ─────────────────────────────────────────────
     print("\n[ CORPORATE DATA ]")
@@ -1754,7 +1911,15 @@ def interactive_profile() -> dict:
     profile["min_len"] = int(min_raw) if min_raw.isdigit() else 6
     profile["max_len"] = int(max_raw) if max_raw.isdigit() and int(max_raw) > 0 else 32
     profile["include_specials"] = _ask("Add special characters to combinations? [y/N]").lower() in ("y", "yes")
-    print("  Note: current/previous year suffixes (e.g. 25, 2025, 26, 2026) are added automatically.")
+    print("  Note: current/previous year suffixes (25, 2025, 26, 2026) are added automatically.")
+    profile["include_recent_years"] = _ask(
+        "Include rolling recent year tokens (current + previous year)? [Y/n]"
+    ).lower() not in ("n", "no")
+    if profile.get("include_recent_years", True):
+        lb_raw = _ask("Recent years lookback (0=current only, 1=current+previous, default: 1)")
+        profile["recent_years_lookback"] = int(lb_raw) if lb_raw.isdigit() else 1
+    else:
+        profile["recent_years_lookback"] = 0
 
     # ── Output file ───────────────────────────────────────────
     print("\n[ OUTPUT FILE ]")
@@ -2005,6 +2170,7 @@ def generate_from_profile(
     Yields:
         Individual wordlist entries, one per yield.
     """
+    profile = _normalize_profile_pets(dict(profile))
     use_leet = leet_mode or profile.get("leet_mode", "basic")
     do_leet = use_leet not in ("none", "")
     effective_max = max_len if max_len > 0 else 9999
@@ -2145,7 +2311,8 @@ def generate_from_profile(
         )
 
     # Pets
-    for pet in profile.get("pets", []):
+    pet_names, _ = _normalize_pet_entries(profile.get("pets") or [])
+    for pet in pet_names:
         add_words(pet)
 
     # Corporate

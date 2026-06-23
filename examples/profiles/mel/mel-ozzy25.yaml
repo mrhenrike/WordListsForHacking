@@ -1,0 +1,19 @@
+# Focused list ~12 chars — patterns like Daryus#OzZY25
+full_name: "Mel Andrade"
+short_name: "Mel"
+birth_day: 1
+birth_month: 1
+birth_year: 1990
+company_name: "Daryus"
+keywords:
+  - "suco"
+pets:
+  - name: "Ozzy"
+    year: 2025
+leet_mode: "basic"
+include_specials: true
+use_behavior_patterns: false
+include_recent_years: true
+recent_years_lookback: 1
+min_len: 12
+max_len: 14

@@ -83,7 +83,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "2.6.1"
+VERSION = "2.6.2"
 
 # ── Graceful shutdown ──────────────────────────────────────────────────────────
 _SHUTDOWN_REQUESTED = False
@@ -3609,7 +3609,7 @@ def cmd_pattern_rank(args: argparse.Namespace) -> None:
     print(f"  Unique masks    : {result['unique_masks']:,}")
     print(f"  Keyboard walk   : {result['keyboard_walk_pct']:.1f}% of passwords")
     print(f"  PTBR months     : {result['ptbr_month_pct']:.1f}% of passwords")
-    print(f"\n  Top 10 Hashcat masks:")
+    print("\n  Top 10 Hashcat masks:")
     for mask, count, pct in result["top_masks"][:10]:
         print(f"    {mask:<30} {count:>8}  ({pct:.1f}%)")
     print()

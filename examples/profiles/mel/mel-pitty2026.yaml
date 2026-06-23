@@ -1,0 +1,20 @@
+# Focused list ~18 chars — patterns like _D4RYU5@2026#Pitty
+full_name: "Mel Andrade"
+short_name: "Mel"
+birth_day: 1
+birth_month: 1
+birth_year: 1990
+company_name: "Daryus"
+company_department: "Gerente Cyber Security"
+keywords:
+  - "suco"
+pets:
+  - name: "Pitty"
+    year: 2026
+leet_mode: "aggressive"
+include_specials: true
+use_behavior_patterns: false
+include_recent_years: true
+recent_years_lookback: 1
+min_len: 17
+max_len: 19
