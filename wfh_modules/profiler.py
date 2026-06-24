@@ -114,7 +114,7 @@ def load_profile_yaml(filepath: str) -> dict:
 
     # Normalize list fields that might be given as strings
     for list_field in ("nicknames", "phones", "social_handles", "keywords",
-                       "special_dates", "pets", "children"):
+                       "special_dates", "pets", "children", "phrases"):
         val = data.get(list_field)
         if isinstance(val, str):
             data[list_field] = [v.strip() for v in val.split(",") if v.strip()]
@@ -883,10 +883,37 @@ _BR_INITIALS_MAP: dict[str, str] = {
 }
 
 
+def _phrase_initials_suffixes(
+    extra_suffixes: list[str] | None = None,
+    *,
+    include_recent_years: bool = True,
+    recent_years_lookback: int = 1,
+) -> list[str]:
+    """Build prefix/suffix list for phrase-initial combos (incl. rolling years)."""
+    suffixes: list[str] = [
+        "",
+        "@0x90", "#0x90", "_0x90", "!0x90",
+        "@0x41", "#0x41",
+        "@123", "#123", "_123", "!123",
+        "@!", "#!", "_!",
+    ]
+    if include_recent_years:
+        for y in rolling_recent_year_tokens(recent_years_lookback):
+            for pref in ("@", "#", "_", "!", "$"):
+                suffixes.append(f"{pref}{y}")
+    for s in extra_suffixes or []:
+        if s not in suffixes:
+            suffixes.append(s)
+    return list(dict.fromkeys(suffixes))
+
+
 def phrase_initials_variants(
     phrase: str,
     extra_prefixes: list[str] | None = None,
     extra_suffixes: list[str] | None = None,
+    *,
+    include_recent_years: bool = True,
+    recent_years_lookback: int = 1,
 ) -> list[str]:
     """
     Generate password variants from phrase initials (first letter of each word).
@@ -965,15 +992,11 @@ def phrase_initials_variants(
     all_bases = list(dict.fromkeys(base_variants + leet_variants))
 
     prefixes: list[str] = ["", "_", "__", "@", "#", "!"] + (extra_prefixes or [])
-    suffixes: list[str] = [
-        "",
-        "@0x90", "#0x90", "_0x90", "!0x90",
-        "@0x41", "#0x41",
-        "@123", "#123", "_123", "!123",
-        "@2024", "#2024", "_2024",
-        "@2025", "#2025", "_2025",
-        "@!", "#!", "_!",
-    ] + (extra_suffixes or [])
+    suffixes = _phrase_initials_suffixes(
+        extra_suffixes,
+        include_recent_years=include_recent_years,
+        recent_years_lookback=recent_years_lookback,
+    )
 
     results: list[str] = []
     seen: set[str] = set()
@@ -987,6 +1010,37 @@ def phrase_initials_variants(
                     results.append(candidate)
 
     return results
+
+
+def _emit_phrase_initials_combos(
+    profile: dict,
+    min_len: int,
+    max_len: int,
+    seen: set[str],
+) -> Generator[str, None, None]:
+    """
+    Yield acrostic passwords from personal phrases/jargon in the profile.
+
+    Example phrase → ``_E+FpQTq@2026`` (prefix + initials + year suffix).
+    """
+    phrases = list(profile.get("phrases") or []) + list(profile.get("jargon_phrases") or [])
+    if not phrases:
+        return
+
+    lookback = int(profile.get("recent_years_lookback", 1))
+    include_years = profile.get("include_recent_years", True)
+
+    for phrase in phrases:
+        if not phrase or not str(phrase).strip():
+            continue
+        for variant in phrase_initials_variants(
+            str(phrase),
+            include_recent_years=include_years,
+            recent_years_lookback=lookback,
+        ):
+            if variant and variant not in seen and min_len <= len(variant) <= max_len:
+                seen.add(variant)
+                yield variant
 
 
 # Leet tables alias — defined above near LEET_BASIC
@@ -1899,6 +1953,14 @@ def interactive_profile() -> dict:
     profile["keywords"] = _ask_multi("Keywords / topics of interest (hobbies, teams, idols...)")
     profile["special_dates"] = _ask_multi("Special dates (anniversaries, events — any format)")
 
+    # ── Phrases & jargon (acrostic passwords) ─────────────────
+    print("\n[ PHRASES & JARGON ]")
+    print("  Each phrase → acrostic initials + mutations (e.g. _E+FpQTq@2026).")
+    print("  PT-BR: \"mais\" in a phrase becomes \"+\" in the initials string.")
+    profile["phrases"] = _ask_multi(
+        "Personal phrases / jargon / sayings (e.g. é melhor pedir do que tentar quebrar)"
+    )
+
     # ── Generation options ────────────────────────────────────
     print("\n[ GENERATION OPTIONS ]")
     profile["leet_mode"] = _ask("Leet mode [none/basic/medium/aggressive] (default: basic)") or "basic"
@@ -2440,6 +2502,11 @@ def generate_from_profile(
         profile, all_date_tokens, effective_min, effective_max, seen,
         include_specials=include_specials,
         with_spaces=with_spaces,
+    )
+
+    # ── Phrase/jargon acrostics (_E+FpQTq@2026, …) ────────────
+    yield from _emit_phrase_initials_combos(
+        profile, effective_min, effective_max, seen,
     )
 
     # ── Behavioral/religious patterns from JSON DB ────────────
