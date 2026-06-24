@@ -24,11 +24,9 @@ secrets.json
 # Internal / local-only tooling (not for public distribution)
 update_wordlists.py
 
-# Main password corpus — rebuild locally (exceeds GitHub 100 MB after drogarias merge)
-passwords/wlist_brasil.lst
+# Main password corpus — tracked via Git LFS (see .gitattributes)
 
-# OSINT profiles, examples, local targets
-examples/
+# OSINT YAML profiles live under labs/profiles/ (gitignored via labs/*/)
 
 # Temp / scratch / generated one-off wordlists
 *.tmp.lst
