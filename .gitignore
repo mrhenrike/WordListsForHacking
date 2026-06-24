@@ -2,9 +2,37 @@ __pycache__/
 *.pyc
 .log/
 .tmp/
-.env
+.venv/
+venv/
 
-# Modelo ML treinado (não versionar — pode conter hash de dados sensíveis)
+# Secrets & credentials — never commit
+.env
+.env.*
+*.pem
+*.ppk
+*.key
+*.p12
+*.pfx
+*.crt
+id_rsa
+id_rsa.*
+*.credentials
+credentials.json
+secrets.json
+**/secrets/
+
+# Internal / local-only tooling (not for public distribution)
+update_wordlists.py
+
+# OSINT profiles, examples, local targets
+examples/
+
+# Temp / scratch / generated one-off wordlists
+*.tmp.lst
+temp/
+/tmp/
+
+# Modelo ML treinado (pode conter hash de dados sensíveis)
 .model/
 
 # Listas geradas pelo wfh.py (versionar apenas quando curadas)
@@ -18,5 +46,9 @@ build/
 *.egg-info/
 *.egg
 
-# Lab folder tracked, but subdirectories (datasets) are not
+# Lab folder: only root-level curated *.lst (passwords/users) are tracked.
+# Subdirectories, YAML profiles, and generated lists stay local.
 labs/*/
+labs/*.yaml
+labs/*.yml
+labs/labs_number2text.lst
