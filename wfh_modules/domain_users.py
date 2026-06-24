@@ -844,7 +844,7 @@ CORPORATE_PASSWORD_PATTERNS: list[str] = [
     "{company}2025",
     "{company}2026",
     # ── Brazilian patterns ────────────────────────────────────
-    "{fn}@safelabs",
+    "{fn}@corp",
     "{fn}123456",
     "{fn}12345",
     "{fn}1234",
@@ -877,7 +877,7 @@ CORPORATE_PASSWORD_PATTERNS: list[str] = [
     "{company}admin!",
     "{company}admin{year}",
     # ── Vault behavioral patterns (observed in Brazilian corp environments) ──
-    # Pattern: {Company}${Year} and variants with ### suffix (ISH analysis)
+    # Pattern: {Company}${Year} and variants with ### suffix (MSSP analysis)
     "{company}${year}",
     "{company}${year}!",
     "{company}${year}###",
@@ -890,7 +890,7 @@ CORPORATE_PASSWORD_PATTERNS: list[str] = [
     "#{company}@{year}",
     "#{company}@{year}#",
     "#{company}{year}#",
-    # Pattern: {Company}#{Year}### — vault sample SAFElabs#2026 variants
+    # Pattern: {Company}#{Year}### — vault sample Corp#2026 variants
     "{company}#{year}!",
     "{company}@{year}#{y2}",
     "{company}&{year}",
@@ -900,7 +900,7 @@ CORPORATE_PASSWORD_PATTERNS: list[str] = [
     "{company}{y2}!",
     "{fn}{y2}",
     "{ln}{y2}",
-    # Pattern: {Role}{Company}{Year}! — UGAdmin2025!, AdminISH2024!
+    # Pattern: {Role}{Company}{Year}! — UGAdmin2025!, AdminCorp2024!
     "Admin{company}{year}!",
     "admin{company}{year}",
     "Admin{company}!",
@@ -910,7 +910,7 @@ CORPORATE_PASSWORD_PATTERNS: list[str] = [
     "root{company}{year}",
     "Dev{company}{year}!",
     "dev{company}{year}",
-    # Pattern: {fn}@{Company} / {fn}.{Company} — ish@init123
+    # Pattern: {fn}@{Company} / {fn}.{Company} — user@init123
     "{fn}@{company}",
     "{fn}@{company}{y2}",
     "{fn}@{company}{year}",
@@ -919,7 +919,7 @@ CORPORATE_PASSWORD_PATTERNS: list[str] = [
     # Pattern: {Company}@{Year}#{word} — TechSummit@2022#Brazil
     "{company}@{year}#brasil",
     "{company}@{year}#brazil",
-    # Pattern: {Company}{Word}{Year} — Labish2020!, Nozominetworks1
+    # Pattern: {Company}{Word}{Year} — LabCorp2020!, Nozominetworks1
     "{company}mudar@{year}",
     "{company}Acesso{year}",
     "{company}acesso{year}",
@@ -931,7 +931,7 @@ CORPORATE_PASSWORD_PATTERNS: list[str] = [
     "{fn}{ln}2025",
     "{ln}{fn}01",
     # Pattern: {Company}{year}! with capital
-    # e.g. Labish2020! → {CompanyCap}{year}!
+    # e.g. LabCorp2020! → {CompanyCap}{year}!
     "{company}{year}!",
     "{fn}{year}!!",
     # Pattern: passphrase-like {word}-{word}-{word}-{NNN}
@@ -1086,7 +1086,7 @@ def generate_passwords_for_person(
                     yield r
 
     # ── Leet variants of fn-based passwords ──────────────────────────────────
-    # Observed pattern: S3gu4@nca, Ishalian@2023, Labish2020!
+    # Observed pattern: S3gu4@nca, UserAlias@2023, LabCorp2020!
     for leet_fn in leet_fn_variants:
         for year in years:
             y = str(year)

@@ -472,6 +472,12 @@ python wfh.py --min-len 10 mutate "admin" -o long_variants.lst
 
 ---
 
+## Contact
+
+- **Support / general inquiries:** [suporte@uniaogeek.com.br](mailto:suporte@uniaogeek.com.br)
+- **Security issues:** [SECURITY.md](SECURITY.md)
+- **Organization:** [União Geek](https://github.com/Uniao-Geek)
+
 ## Contributing
 
 Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -483,7 +489,8 @@ Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md).
 ---
 
 <p align="center">
-  Created by <a href="https://github.com/mrhenrike">André Henrique (@mrhenrike)</a> — <a href="https://github.com/Uniao-Geek">União Geek</a>
+  Created by <a href="https://github.com/mrhenrike">André Henrique (@mrhenrike)</a> — <a href="https://github.com/Uniao-Geek">União Geek</a><br>
+  <a href="mailto:suporte@uniaogeek.com.br">suporte@uniaogeek.com.br</a>
 </p>
 
 <p align="center">

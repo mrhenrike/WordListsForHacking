@@ -59,8 +59,8 @@ representative at an online or offline event.
 ## Enforcement
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
-reported to the project maintainers responsible for enforcement at the contact
-address listed in the repository README or organization profile.
+reported to the project maintainers responsible for enforcement at
+**suporte@uniaogeek.com.br**.
 
 All complaints will be reviewed and investigated promptly and fairly.
 

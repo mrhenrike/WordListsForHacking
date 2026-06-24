@@ -505,6 +505,12 @@ Se uma senha pertencente a você ou sua organização aparece nesta wordlist, is
 
 ---
 
+## Contato
+
+- **Suporte / dúvidas gerais:** [suporte@uniaogeek.com.br](mailto:suporte@uniaogeek.com.br)
+- **Segurança:** [SECURITY.md](SECURITY.md)
+- **Organização:** [União Geek](https://github.com/Uniao-Geek)
+
 ## Contributing
 
 Contribuições são bem-vindas. Veja o [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -516,7 +522,8 @@ Contribuições são bem-vindas. Veja o [CONTRIBUTING.md](CONTRIBUTING.md).
 ---
 
 <p align="center">
-  <strong>Autor:</strong> André Henrique (<a href="https://github.com/mrhenrike">@mrhenrike</a>) | <a href="https://github.com/Uniao-Geek">União Geek</a>
+  <strong>Autor:</strong> André Henrique (<a href="https://github.com/mrhenrike">@mrhenrike</a>) | <a href="https://github.com/Uniao-Geek">União Geek</a><br>
+  <a href="mailto:suporte@uniaogeek.com.br">suporte@uniaogeek.com.br</a>
 </p>
 
 <p align="center">

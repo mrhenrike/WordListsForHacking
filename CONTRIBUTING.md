@@ -78,6 +78,12 @@ This project follows [Semantic Versioning](https://semver.org/):
 - **MINOR**: New features, new modules, new patterns.
 - **PATCH**: Bug fixes, documentation updates, minor improvements.
 
+## Contact
+
+- **Support / general inquiries:** [suporte@uniaogeek.com.br](mailto:suporte@uniaogeek.com.br)
+- **Security issues:** see [SECURITY.md](SECURITY.md)
+- **Organization:** [União Geek](https://github.com/Uniao-Geek)
+
 ## Attribution
 
 All contributions are attributed to **André Henrique**

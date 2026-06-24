@@ -17,7 +17,7 @@ responsibly. **Do not open a public GitHub issue.**
 
 ### How to Report
 
-1. **Email:** Send a detailed report to **security@safelabs.com.br**
+1. **Email:** Send a detailed report to **suporte@uniaogeek.com.br**
 2. **GitHub Security Advisory:** Use the
    [Security Advisories](https://github.com/mrhenrike/WordListsForHacking/security/advisories)
    tab to create a private report.
@@ -76,3 +76,4 @@ We follow coordinated disclosure practices:
 ## Attribution
 
 Security reports are handled by **André Henrique** ([@mrhenrike](https://github.com/mrhenrike)).
+Contact: **suporte@uniaogeek.com.br**

@@ -10,10 +10,10 @@ readme = "README.md"
 license = "MIT"
 requires-python = ">=3.8"
 authors = [
-    {name = "André Henrique", email = "contact@safelabs.com.br"},
+    {name = "André Henrique", email = "suporte@uniaogeek.com.br"},
 ]
 maintainers = [
-    {name = "André Henrique", email = "contact@safelabs.com.br"},
+    {name = "André Henrique", email = "suporte@uniaogeek.com.br"},
 ]
 keywords = [
     "wordlist", "password", "pentest", "red-team", "security",
@@ -77,6 +77,7 @@ Documentation = "https://github.com/mrhenrike/WordListsForHacking/wiki"
 Repository = "https://github.com/mrhenrike/WordListsForHacking"
 Issues = "https://github.com/mrhenrike/WordListsForHacking/issues"
 Changelog = "https://github.com/mrhenrike/WordListsForHacking/releases"
+Contact = "mailto:suporte@uniaogeek.com.br"
 
 [project.scripts]
 wfh = "wfh:main"
