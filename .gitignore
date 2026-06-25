@@ -1,3 +1,7 @@
+# IDE / editor local
+.cursor/
+wiki/
+
 __pycache__/
 *.pyc
 .log/
