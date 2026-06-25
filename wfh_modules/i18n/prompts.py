@@ -444,6 +444,15 @@ _CATALOG: dict[str, dict[str, str]] = {
     "engines.scrape_merge.name":        {"en": "Scrape merge",         "pt-br": "Fusão de scrape",          "pt-pt": "Fusão de scrape",          "es": "Fusión de scrape"},
     "engines.output_finalize.name":     {"en": "Output finalize",      "pt-br": "Finalização da saída",     "pt-pt": "Finalização da saída",     "es": "Finalización de salida"},
     "engines.keyword_mutations.name":   {"en": "Keyword mutations",    "pt-br": "Mutações de palavras",     "pt-pt": "Mutações de palavras",     "es": "Mutaciones de palabras"},
+    "engines.cewl_mut.name":            {"en": "CeWL scrape preset",   "pt-br": "Preset CeWL scrape",       "pt-pt": "Preset CeWL scrape",       "es": "Preset CeWL scrape"},
+
+    # Engine descriptions (fallback: registry English string)
+    "engines.charset.desc":             {"en": "Charset and mask generation", "pt-br": "Geração de charset e máscaras", "pt-pt": "Geração de charset e máscaras", "es": "Generación de charset y máscaras"},
+    "engines.profile.desc":             {"en": "Personal target profiling", "pt-br": "Perfil de alvo pessoal", "pt-pt": "Perfil de alvo pessoal", "es": "Perfil de objetivo personal"},
+    "engines.osint_perm.desc":          {"en": "OSINT token permutations", "pt-br": "Permutações de tokens OSINT", "pt-pt": "Permutações de tokens OSINT", "es": "Permutaciones de tokens OSINT"},
+    "engines.cewl_mut.desc":            {"en": "CeWL scrape + RSMangler + John rules", "pt-br": "CeWL scrape + RSMangler + regras John", "pt-pt": "CeWL scrape + RSMangler + regras John", "es": "CeWL scrape + RSMangler + reglas John"},
+    "engines.rank_likelihood.desc":     {"en": "Pattern-based likelihood ranking", "pt-br": "Ranking por padrões de probabilidade", "pt-pt": "Ranking por padrões de probabilidade", "es": "Ranking por patrones de probabilidad"},
+    "engines.maya_rank.desc":           {"en": "MAYA ML-based password ranking", "pt-br": "Ranking ML MAYA de senhas", "pt-pt": "Ranking ML MAYA de palavras-passe", "es": "Ranking ML MAYA de contraseñas"},
 
     # ── Finalização da saída ──────────────────────────────────────────────────
     "output.sanitize": {

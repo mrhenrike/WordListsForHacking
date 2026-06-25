@@ -35,8 +35,9 @@ END_TOKEN = "\x03"
 class MarkovModel:
     """Positional Markov model with integer cost enumeration."""
 
-    def __init__(self, order: int = 3) -> None:
+    def __init__(self, order: int = 3, smoothing: float = 0.01) -> None:
         self.order: int = order
+        self.smoothing: float = max(0.0, smoothing)
         self.ngrams: dict[int, dict[str, Counter]] = defaultdict(lambda: defaultdict(Counter))
         self.length_dist: Counter = Counter()
         self.total_trained: int = 0
@@ -98,15 +99,11 @@ class MarkovModel:
         """
         capped_pos = min(pos, 20)
         counter = self.ngrams.get(capped_pos, {}).get(context, Counter())
-        if not counter:
-            return COST_LEVELS
-
-        total = sum(counter.values())
-        count = counter.get(char, 0)
-        if count == 0:
-            return COST_LEVELS
-
-        prob = count / total
+        alpha = self.smoothing
+        vocab_size = max(len(self.alphabet) + 2, 36)
+        total = sum(counter.values()) if counter else 0
+        count = counter.get(char, 0) if counter else 0
+        prob = (count + alpha) / (total + alpha * vocab_size)
         cost = max(0, min(COST_LEVELS, int(-math.log2(max(prob, 1e-15)) * COST_LEVELS / 16)))
         return cost
 
@@ -115,10 +112,10 @@ class MarkovModel:
         total = sum(self.length_dist.values())
         if total == 0:
             return 0
+        alpha = self.smoothing
+        vocab_size = max(len(self.length_dist) + 1, 16)
         count = self.length_dist.get(length, 0)
-        if count == 0:
-            return COST_LEVELS
-        prob = count / total
+        prob = (count + alpha) / (total + alpha * vocab_size)
         return max(0, min(COST_LEVELS, int(-math.log2(max(prob, 1e-15)) * COST_LEVELS / 8)))
 
     def generate(
@@ -199,6 +196,7 @@ class MarkovModel:
         data = {
             "version": "1.0.0",
             "order": self.order,
+            "smoothing": self.smoothing,
             "total_trained": self.total_trained,
             "alphabet": sorted(self.alphabet),
             "length_dist": dict(self.length_dist),
@@ -223,6 +221,7 @@ class MarkovModel:
             data = json.load(fh)
 
         self.order = data.get("order", 3)
+        self.smoothing = float(data.get("smoothing", 0.01))
         self.total_trained = data.get("total_trained", 0)
         self.alphabet = set(data.get("alphabet", []))
         self.length_dist = Counter({int(k): v for k, v in data.get("length_dist", {}).items()})
@@ -267,7 +266,8 @@ def handle_markov(args, ctx: dict) -> Optional[Generator[str, None, None]]:
     """
     action = getattr(args, "markov_action", "generate")
     order = getattr(args, "order", 3) or 3
-    model = MarkovModel(order=order)
+    smoothing = getattr(args, "smoothing", 0.01) or 0.01
+    model = MarkovModel(order=order, smoothing=smoothing)
 
     if action == "train":
         sources = getattr(args, "wordlist", None) or []

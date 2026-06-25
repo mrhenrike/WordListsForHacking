@@ -882,6 +882,47 @@ def mask_distribution(
     }
 
 
+def stress_crc32_dedup(line_count: int = 150_000) -> dict:
+    """Stress-test streaming CRC32 dedup with synthetic unique lines."""
+    import time
+
+    from wfh_modules.pipeline_engine import CRC32Deduplicator
+
+    dedup = CRC32Deduplicator()
+    false_dupes = 0
+    t0 = time.perf_counter()
+    for i in range(line_count):
+        word = f"wfh_stress_{i:07d}_{(i * 7919) % 100_003}"
+        if not dedup.is_new(word):
+            false_dupes += 1
+    elapsed = time.perf_counter() - t0
+    rate = line_count / elapsed if elapsed > 0 else 0.0
+    return {
+        "lines": line_count,
+        "unique_emitted": dedup.count_emitted,
+        "false_crc_collisions": false_dupes,
+        "elapsed_secs": round(elapsed, 3),
+        "lines_per_sec": round(rate, 0),
+    }
+
+
+def format_crc32_stress_report(result: dict) -> str:
+    """Format CRC32 dedup stress test results."""
+    return "\n".join([
+        "=" * 60,
+        "  CRC32 DEDUP STRESS TEST",
+        "=" * 60,
+        "",
+        f"  Lines processed : {result.get('lines', 0):,}",
+        f"  Unique emitted  : {result.get('unique_emitted', 0):,}",
+        f"  False collisions: {result.get('false_crc_collisions', 0):,}",
+        f"  Elapsed         : {result.get('elapsed_secs', 0):.3f}s",
+        f"  Throughput      : {result.get('lines_per_sec', 0):,.0f} lines/s",
+        "",
+        "=" * 60,
+    ])
+
+
 def format_known_targets_report(result: dict) -> str:
     """Formata resultado de benchmark_known_targets como texto legível."""
     lines = [

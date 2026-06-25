@@ -3,12 +3,12 @@
 <p align="center">
   <img src="https://img.shields.io/github/stars/mrhenrike/WordListsForHacking?style=flat-square" alt="GitHub Stars">
   <img src="https://img.shields.io/github/license/mrhenrike/WordListsForHacking?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/version-2.6.1-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.7.0-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/python-3.8%2B-blue?style=flat-square&logo=python&logoColor=white" alt="Python 3.8+">
   <img src="https://img.shields.io/pypi/v/wfh-wordlist?style=flat-square&logo=pypi&logoColor=white&color=green" alt="PyPI">
 </p>
 
-**Unified wordlist generation toolkit for pentest and red team operations — 36 subcommands in a single CLI.** Charset/mask generation, personal & corporate target profiling, web scraping (JS/CSS/PDF extraction), OCR, document parsing (PDF/XLSX/DOCX), leet speak permutations, XOR crypto, DNS/subdomain fuzzing, phone number generation, corporate user enumeration, retail/pharmacy chain credential patterns, default credential databases (IoT/ICS/SCADA/PLC/HMI), ISP WiFi keyspace generation, password-DNA behavioral analysis, keyword combiner, word mangling, merge & sanitize, ML-based ranking with SecLists corpus training, statistical analysis, PCFG probabilistic grammar generation, OMEN-style Markov chain generation, keyboard walk generation, automatic hashcat rule generation, PRINCE combinatorial chaining, wordlist quality benchmarking, **phrase-initials acrostic generation, existing-password mutation engine, digit-to-text variants (EN/PT/BR/ES), global length filters, and disk-space safety checks.**
+**Unified wordlist generation toolkit for pentest and red team operations — 44 subcommands in a single CLI.** Charset/mask generation, personal & corporate target profiling, web scraping (JS/CSS/PDF extraction), OCR, document parsing (PDF/XLSX/DOCX), leet speak permutations, XOR crypto, DNS/subdomain fuzzing, phone number generation, corporate user enumeration, retail/pharmacy chain credential patterns, default credential databases (IoT/ICS/SCADA/PLC/HMI), ISP WiFi keyspace generation, password-DNA behavioral analysis, keyword combiner, word mangling, merge & sanitize, ML-based ranking with SecLists corpus training, statistical analysis, PCFG probabilistic grammar generation, OMEN-style Markov chain generation, keyboard walk generation, automatic hashcat rule generation, PRINCE combinatorial chaining, wordlist quality benchmarking, **phrase-initials acrostic generation, existing-password mutation engine, digit-to-text variants (EN/PT/BR/ES), global length filters, and disk-space safety checks.**
 
 > **Full documentation:** [Wiki](https://github.com/mrhenrike/WordListsForHacking/wiki)
 
@@ -20,30 +20,22 @@
 
 ## Quick Start
 
-### Install via pip (recommended)
+### Install via pip (optional)
 
 ```bash
-pip install wfh-wordlist                # core (charset, profile, dns, scrape, analyze, ...)
-pip install wfh-wordlist[docs]         # + PDF/XLSX/DOCX extraction
-pip install wfh-wordlist[scrape]       # + PDF crawl during web scraping
-pip install wfh-wordlist[ocr]          # + OCR (requires PyTorch)
-pip install wfh-wordlist[full]         # all extras
+pip install wfh-wordlist                # core
+pip install wfh-wordlist[full]         # all extras (OCR, docs, scrape)
 ```
 
-Verify installation:
-
-```bash
-wfh --help                              # should show 25 subcommands
-pip show wfh-wordlist                   # check version
-```
-
-### Or clone from source
+### Clone from source
 
 ```bash
 git clone https://github.com/mrhenrike/WordListsForHacking.git
 cd WordListsForHacking
 
-# Linux / macOS / Termux
+pip install -r requirements.txt pyyaml
+
+# Linux / macOS / Termux (optional venv)
 chmod +x setup_venv.sh && ./setup_venv.sh && source .venv/bin/activate
 
 # Windows PowerShell
@@ -53,10 +45,12 @@ chmod +x setup_venv.sh && ./setup_venv.sh && source .venv/bin/activate
 ### Run
 
 ```bash
-wfh                        # interactive menu (pip install)
-python wfh.py              # interactive menu (from source)
-python wfh.py --help       # full CLI help
+python wfh.py              # interactive menu
+python wfh.py --help       # full CLI help (44 subcommands)
+wfh --help                 # after pip install
 ```
+
+> **Packaging:** PyPI package `wfh-wordlist` mirrors this repo. Local `pyproject.toml` is not tracked in git; copy `pyproject.toml.example` for editable installs.
 
 > **OS prerequisites (OCR only):** see the [Installation wiki page](https://github.com/mrhenrike/WordListsForHacking/wiki/Installation).
 

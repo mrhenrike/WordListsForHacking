@@ -36,6 +36,16 @@ logger = logging.getLogger(__name__)
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 
 
+def _is_comment_line(line: str) -> bool:
+    """True only for metadata comments, not passwords starting with '#'."""
+    s = line.lstrip()
+    if not s.startswith("#"):
+        return False
+    if len(s) == 1:
+        return True
+    return s[1].isspace()
+
+
 def _read_lines(filepath: str) -> list[str]:
     """
     Lê linhas de um arquivo preservando conteúdo original.
@@ -126,7 +136,7 @@ def sanitize(
 
     for line in lines:
         # Remover comentários
-        if no_comments and line.lstrip().startswith("#"):
+        if no_comments and _is_comment_line(line):
             stats["removed_comments"] += 1
             continue
 

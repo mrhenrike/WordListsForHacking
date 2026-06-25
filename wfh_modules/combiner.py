@@ -66,8 +66,9 @@ def combine_keywords(
     depth = max_depth if max_depth > 0 else n
 
     def emit(s: str) -> Optional[str]:
-        if s and s not in seen and min_length <= len(s) <= max_length:
-            seen.add(s)
+        key = s.casefold()
+        if s and key not in seen and min_length <= len(s) <= max_length:
+            seen.add(key)
             return s
         return None
 

@@ -69,6 +69,11 @@ DIRECTIONS = {
     "NW": (-1, -1),
 }
 
+DIR_BY_IDX = {
+    "0": "N", "1": "NE", "2": "E", "3": "SE",
+    "4": "S", "5": "SW", "6": "W", "7": "NW",
+}
+
 
 def _build_adjacency(layout: list[list[str]]) -> dict[str, dict[str, str]]:
     """Build adjacency map from a keyboard layout.
@@ -166,6 +171,97 @@ def generate_walks(
                     return
 
 
+def _parse_route_dirs(route: str) -> list[str]:
+    """Convert kwprocessor-style route string to direction names."""
+    dirs: list[str] = []
+    for ch in route.replace(",", "").replace(" ", "").replace("-", ""):
+        upper = ch.upper()
+        if upper in DIRECTIONS:
+            dirs.append(upper)
+        elif ch in DIR_BY_IDX:
+            dirs.append(DIR_BY_IDX[ch])
+    return dirs
+
+
+def walk_route(
+    start: str,
+    route: str,
+    layouts: Optional[list[str]] = None,
+    include_shift: bool = True,
+) -> Optional[str]:
+    """Follow an explicit direction route from a starting key."""
+    if not start or not route:
+        return None
+
+    layout_names = list(layouts or ["qwerty"])
+    if include_shift:
+        for name in list(layout_names):
+            shifted = f"{name}_shift"
+            if shifted in LAYOUTS and shifted not in layout_names:
+                layout_names.append(shifted)
+
+    adjacency = _merge_layouts(*layout_names)
+    if start not in adjacency:
+        return None
+
+    path = start
+    current = start
+    for direction in _parse_route_dirs(route):
+        nxt = adjacency.get(current, {}).get(direction)
+        if not nxt:
+            return None
+        path += nxt
+        current = nxt
+    return path
+
+
+def load_route_file(filepath: str) -> list[tuple[str, str]]:
+    """Load routes from a kwprocessor-style file (start + direction digits per line)."""
+    from pathlib import Path
+
+    routes: list[tuple[str, str]] = []
+    for line in Path(filepath).read_text(encoding="utf-8", errors="ignore").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if ":" in line:
+            start, dirs = line.split(":", 1)
+        elif "," in line:
+            start, dirs = line.split(",", 1)
+        else:
+            parts = line.split(None, 1)
+            if len(parts) != 2:
+                continue
+            start, dirs = parts
+        start = start.strip()
+        dirs = dirs.strip()
+        if start and dirs:
+            routes.append((start, dirs))
+    return routes
+
+
+def generate_routes(
+    routes: list[tuple[str, str]],
+    layouts: Optional[list[str]] = None,
+    include_shift: bool = True,
+    min_length: int = 0,
+    max_length: int = 64,
+) -> Generator[str, None, None]:
+    """Generate passwords from explicit keyboard routes."""
+    seen: set[str] = set()
+    for start, route in routes:
+        walk = walk_route(start, route, layouts=layouts, include_shift=include_shift)
+        if not walk:
+            continue
+        if min_length and len(walk) < min_length:
+            continue
+        if max_length and len(walk) > max_length:
+            continue
+        if walk not in seen:
+            seen.add(walk)
+            yield walk
+
+
 def _dfs_walk(
     adj: dict[str, dict[str, str]],
     start: str,
@@ -243,6 +339,28 @@ def handle_kwalk(args, ctx: dict) -> Optional[Generator[str, None, None]]:
 
     layout_str = getattr(args, "layout", "qwerty") or "qwerty"
     layouts = [l.strip() for l in layout_str.split(",")]
+
+    route_file = getattr(args, "route_file", None)
+    route_arg = getattr(args, "route", None)
+    if route_file or route_arg:
+        routes: list[tuple[str, str]] = []
+        if route_file:
+            routes.extend(load_route_file(route_file))
+        if route_arg:
+            if ":" in route_arg:
+                start, dirs = route_arg.split(":", 1)
+            elif "," in route_arg:
+                start, dirs = route_arg.split(",", 1)
+            else:
+                start, dirs = route_arg.split(None, 1) if " " in route_arg else (route_arg[0], route_arg[1:])
+            routes.append((start.strip(), dirs.strip()))
+        return generate_routes(
+            routes,
+            layouts=layouts,
+            include_shift=not getattr(args, "no_shift", False),
+            min_length=getattr(args, "min_len", 4),
+            max_length=getattr(args, "max_len", 10),
+        )
 
     dir_str = getattr(args, "directions", None)
     directions = [d.strip().upper() for d in dir_str.split(",")] if dir_str else None

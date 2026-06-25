@@ -82,6 +82,9 @@ def prince_generate(
     case_permute: bool = False,
     max_candidates: int = 0,
     max_words: int = 0,
+    min_word_len: int = 0,
+    max_word_len: int = 0,
+    superchop: int = 0,
 ) -> Generator[str, None, None]:
     """Generate PRINCE-mode candidates from a wordlist.
 
@@ -107,7 +110,17 @@ def prince_generate(
     if not raw_words:
         return
 
-    words = [w for w, _ in raw_words]
+    words: list[str] = []
+    for w, _ in raw_words:
+        if superchop > 0:
+            w = w[:superchop]
+        wlen = len(w)
+        if min_word_len and wlen < min_word_len:
+            continue
+        if max_word_len and wlen > max_word_len:
+            continue
+        if w:
+            words.append(w)
     if not words:
         return
 
@@ -257,4 +270,7 @@ def handle_prince(args, ctx: dict) -> Optional[Generator[str, None, None]]:
         case_permute=getattr(args, "case_permute", False),
         max_candidates=getattr(args, "limit", 0) or 0,
         max_words=getattr(args, "max_words", 0) or 0,
+        min_word_len=getattr(args, "wordlen_min", 0) or 0,
+        max_word_len=getattr(args, "wordlen_max", 0) or 0,
+        superchop=getattr(args, "superchop", 0) or 0,
     )

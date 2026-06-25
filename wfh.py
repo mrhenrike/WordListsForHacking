@@ -83,7 +83,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "2.6.3"
+VERSION = "2.7.0"
 
 # ── Graceful shutdown ──────────────────────────────────────────────────────────
 _SHUTDOWN_REQUESTED = False
@@ -622,7 +622,7 @@ def cmd_profile(args: argparse.Namespace) -> None:
             "social_handles": [],
             "keywords": [],
             "special_dates": [],
-            "leet_mode": getattr(args, "leet", "basic") or "basic",
+            "leet_mode": getattr(args, "leet", None) or "basic",
             "with_spaces": False,
             "min_len": 6,
             "max_len": 32,
@@ -673,7 +673,7 @@ def cmd_profile(args: argparse.Namespace) -> None:
     if _timeout:
         profile["timeout_secs"] = _timeout
 
-    leet_mode = getattr(args, "leet", "basic") or profile.get("leet_mode", "basic")
+    leet_mode = getattr(args, "leet", None) or profile.get("leet_mode", "basic")
     profile["leet_mode"] = leet_mode
 
     output = resolve_profile_output(getattr(args, "output", None), profile)
@@ -1272,6 +1272,53 @@ def cmd_leet(args: argparse.Namespace) -> None:
     )
     count = _write_output(gen, args.output)
     _ok(f"Generated: {count:,} variants")
+
+
+def cmd_leet_perm(args: argparse.Namespace) -> None:
+    """Handler for cartesian leet permutation over a wordlist (elpscrk-style)."""
+    from wfh_modules.leet_permuter import leet_perm_wordlist, parse_custom_mapping, LEET_MEDIUM
+
+    wordlist = getattr(args, "wordlist", None)
+    if not wordlist:
+        _err("Provide a wordlist file.")
+        return
+    path = Path(wordlist)
+    if not path.exists():
+        _err(f"File not found: {wordlist}")
+        return
+
+    leet_map = None
+    custom = getattr(args, "custom_map", "") or ""
+    if custom:
+        parsed = parse_custom_mapping(custom)
+        leet_map = {
+            k: (v[0] if v else k)
+            for k, v in parsed.items()
+        }
+    elif getattr(args, "mode", "medium") == "medium":
+        leet_map = {
+            k: (v[1] if len(v) > 1 else k)
+            for k, v in LEET_MEDIUM.items()
+        }
+
+    max_per = getattr(args, "max_per_word", 512) or 512
+    max_lines = getattr(args, "max_lines", 0) or 0
+
+    def _gen():
+        count = 0
+        with path.open(encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                word = line.rstrip("\n\r")
+                if not word:
+                    continue
+                count += 1
+                if max_lines and count > max_lines:
+                    break
+                yield from leet_perm_wordlist([word], leet_map=leet_map, max_per_word=max_per)
+
+    _info(f"Applying leet-perm to {wordlist} (max {max_per}/word)...")
+    total = _write_output(_gen(), args.output)
+    _ok(f"Generated: {total:,} leet-perm variants")
 
 
 def cmd_xor(args: argparse.Namespace) -> None:
@@ -2368,9 +2415,9 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Include year range to this year (e.g. 2026)")
     p_pr.add_argument("--suffix-range", dest="suffix_range", metavar="START-END",
                        help="Append numeric suffix range (e.g. 00-99 or 1-9999)")
-    p_pr.add_argument("--leet", default="basic",
+    p_pr.add_argument("--leet", default=None,
                        choices=["basic", "medium", "aggressive", "none"],
-                       help="Leet speak mode")
+                       help="Leet speak mode (default: from profile YAML or basic)")
     p_pr.add_argument("--surname", help="Surname (separate from first name, CUPP parity)")
     p_pr.add_argument("--old-passwords", dest="old_passwords", nargs="+", metavar="PWD",
                        help="Known old passwords to mutate (elpscrk parity)")
@@ -2664,6 +2711,29 @@ def build_parser() -> argparse.ArgumentParser:
     p_lt.add_argument("--max-results", type=int, default=10000, dest="max_results")
     p_lt.add_argument("-o", "--output", help="Output file")
 
+    p_lp = sub.add_parser(
+        "leet-perm",
+        help="Cartesian leet permutation over a wordlist (elpscrk-style)",
+        description=(
+            "Apply full cartesian leet substitution to each line of a wordlist.\n"
+            "Useful as a post-pass after profile or combiner generation.\n\n"
+            "Examples:\n"
+            "  wfh.py leet-perm words.lst -o leet_words.lst\n"
+            "  wfh.py leet-perm base.lst --max-per-word 256 --max-lines 5000"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_lp.add_argument("wordlist", help="Input wordlist (one token per line)")
+    p_lp.add_argument("-o", "--output", help="Output file")
+    p_lp.add_argument("-m", "--mode", default="medium", choices=["medium", "custom"],
+                       help="Leet map preset (default: medium)")
+    p_lp.add_argument("--custom-map", dest="custom_map", default="",
+                       help="Custom char map (e.g. a=@,4;t=7;s=$)")
+    p_lp.add_argument("--max-per-word", dest="max_per_word", type=int, default=512,
+                       help="Max variants per input word (default: 512)")
+    p_lp.add_argument("--max-lines", dest="max_lines", type=int, default=0,
+                       help="Max input lines to process (0 = all)")
+
     # ── xor ───────────────────────────────────────────────────────────────
     p_xr = sub.add_parser("xor", help="XOR encryption / brute-force")
     xr_group = p_xr.add_mutually_exclusive_group(required=True)
@@ -2924,6 +2994,94 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Use GPU for torch backend (optional)")
     p_mr.add_argument("--min-score", dest="min_score", type=float, default=0.0)
 
+    # ── osint-perm ────────────────────────────────────────────────────────────
+    p_op = sub.add_parser(
+        "osint-perm",
+        help="OSINT-based password permutations from target profile",
+        description=(
+            "Generate password candidates from OSINT profile fields\n"
+            "(name, nickname, birth date, pet, phone, keywords).\n\n"
+            "Examples:\n"
+            "  wfh.py osint-perm --first-name Melissa --last-name Andrade -o out.lst\n"
+            "  wfh.py osint-perm --nick mel --birth 01/1990 --complexity 2 -o out.lst"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_op.add_argument("--first-name", dest="first_name", help="Target first name")
+    p_op.add_argument("--last-name", dest="last_name", help="Target last name")
+    p_op.add_argument("--nick", help="Nickname or handle")
+    p_op.add_argument("--birth", help="Birth date (DD/MM/YYYY or MM/YYYY)")
+    p_op.add_argument("--pet", help="Pet name")
+    p_op.add_argument("--phone", help="Phone number")
+    p_op.add_argument("--complexity", type=int, default=1, choices=range(6),
+                       metavar="0-5", help="Permutation depth (default: 1)")
+    p_op.add_argument("--keywords", nargs="+", metavar="WORD", help="Extra keywords")
+    p_op.add_argument("-o", "--output", help="Output file")
+
+    # ── cupp ──────────────────────────────────────────────────────────────────
+    p_cupp = sub.add_parser(
+        "cupp",
+        help="CUPP-style target-specific password generation",
+        description=(
+            "Generate password candidates from a personal profile\n"
+            "(names, dates, pets, company, custom words).\n\n"
+            "Examples:\n"
+            "  wfh.py cupp --first-name Melissa --last-name Andrade --company Daryus -o out.lst\n"
+            "  wfh.py cupp --nick mel --birth 01/1990 --words Ozzy Pitty --max-output 50000"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_cupp.add_argument("--first-name", dest="first_name", help="Target first name")
+    p_cupp.add_argument("--last-name", dest="last_name", help="Target last name")
+    p_cupp.add_argument("--nick", help="Nickname or handle")
+    p_cupp.add_argument("--birth", help="Birth date")
+    p_cupp.add_argument("--pet", help="Pet name")
+    p_cupp.add_argument("--company", help="Company name")
+    p_cupp.add_argument("--words", nargs="+", metavar="WORD", help="Extra words")
+    p_cupp.add_argument("--max-output", dest="max_output", type=int, default=0,
+                       help="Max candidates (0 = unlimited)")
+    p_cupp.add_argument("-o", "--output", help="Output file")
+
+    # ── pattern-rank ────────────────────────────────────────────────────────
+    p_prk = sub.add_parser(
+        "pattern-rank",
+        help="Analyze wordlist patterns: keyboard walks, Hashcat masks",
+        description=(
+            "Analyze a password wordlist for structural patterns:\n"
+            "keyboard walks, PT-BR month names, top Hashcat masks.\n\n"
+            "Examples:\n"
+            "  wfh.py pattern-rank passwords.lst\n"
+            "  wfh.py pattern-rank leaked.txt --layout qwerty --max-lines 100000"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_prk.add_argument("wordlist", help="Wordlist to analyze")
+    p_prk.add_argument("--layout", default="qwerty",
+                       help="Keyboard layout for walk detection (default: qwerty)")
+    p_prk.add_argument("--max-lines", dest="max_lines", type=int, default=500_000,
+                       help="Max lines to analyze (default: 500000)")
+
+    # ── scrape-target ───────────────────────────────────────────────────────
+    p_st = sub.add_parser(
+        "scrape-target",
+        help="Crawl a target URL and extract words for wordlists",
+        description=(
+            "Lightweight target spider: crawl a URL and extract\n"
+            "unique words suitable for wordlist generation.\n\n"
+            "Examples:\n"
+            "  wfh.py scrape-target --url https://example.com -o words.lst\n"
+            "  wfh.py scrape-target --url https://corp.com --depth 3 --max-pages 50"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    p_st.add_argument("--url", required=True, help="Target URL to crawl")
+    p_st.add_argument("--depth", type=int, default=2, help="Crawl depth (default: 2)")
+    p_st.add_argument("--min-len", dest="min_len", type=int, default=4,
+                       help="Min word length (default: 4)")
+    p_st.add_argument("--max-pages", dest="max_pages", type=int, default=20,
+                       help="Max pages to fetch (default: 20)")
+    p_st.add_argument("-o", "--output", help="Output file")
+
     # ── default-creds ─────────────────────────────────────────────────────────
     p_dc = sub.add_parser(
         "default-creds",
@@ -3000,7 +3158,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_isp.add_argument("-o", "--output", help="Output file")
 
     # ── sysinfo ───────────────────────────────────────────────────────────────
-    sub.add_parser(
+    p_si = sub.add_parser(
         "sysinfo",
         help="Show hardware profile, compute backend and thread status",
         description=(
@@ -3008,11 +3166,14 @@ def build_parser() -> argparse.ArgumentParser:
             "Shows current --threads and --compute settings.\n\n"
             "Examples:\n"
             "  wfh.py sysinfo\n"
+            "  wfh.py sysinfo --crc32-stress 150000\n"
             "  wfh.py --compute gpu sysinfo\n"
             "  wfh.py --threads 20 sysinfo"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
+    p_si.add_argument("--crc32-stress", dest="crc32_stress", type=int, default=0, metavar="N",
+                       help="Run CRC32 dedup stress test with N synthetic lines")
 
     # ── corp-prefixes ─────────────────────────────────────────────────────────
     p_cp = sub.add_parser(
@@ -3276,6 +3437,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Output path for trained model")
     p_mk.add_argument("--order", type=int, default=3,
                        help="N-gram order (default: 3)")
+    p_mk.add_argument("--smoothing", type=float, default=0.01,
+                       help="Laplace smoothing alpha for unseen n-grams (default: 0.01)")
     p_mk.add_argument("--max-lines", dest="max_lines", type=int, default=0,
                        help="Max training lines (0 = unlimited)")
     p_mk.add_argument("--max-cost", dest="max_cost", type=int, default=0,
@@ -3317,6 +3480,10 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Exclude shifted layer (uppercase/symbols)")
     p_kw.add_argument("--start-chars", dest="start_chars", metavar="CHARS",
                        help="Restrict starting characters")
+    p_kw.add_argument("--route", metavar="START:DIRS",
+                       help="Explicit walk route, e.g. q:3467 or q,3467 (0-7 = N..NW)")
+    p_kw.add_argument("--route-file", dest="route_file", metavar="FILE",
+                       help="Route file: one 'start dirs' per line (kwprocessor-style)")
     p_kw.add_argument("--list-layouts", dest="list_layouts", action="store_true",
                        help="List available keyboard layouts")
     p_kw.add_argument("--limit", type=int, default=0,
@@ -3426,6 +3593,12 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Element separator (default: empty, use EMPTY for none)")
     p_pr.add_argument("--case-permute", dest="case_permute", action="store_true",
                        help="Generate case permutations")
+    p_pr.add_argument("--wordlen-min", dest="wordlen_min", type=int, default=0,
+                       help="Min element word length (0 = no filter)")
+    p_pr.add_argument("--wordlen-max", dest="wordlen_max", type=int, default=0,
+                       help="Max element word length (0 = no filter)")
+    p_pr.add_argument("--superchop", type=int, default=0,
+                       help="Truncate each element to N chars (pp64 superchop parity)")
     p_pr.add_argument("--max-words", dest="max_words", type=int, default=0,
                        help="Max words to load from file (0 = all)")
     p_pr.add_argument("--limit", type=int, default=0,
@@ -3562,6 +3735,13 @@ def cmd_sysinfo(args: argparse.Namespace) -> None:
     elif cur_threads >= WARN_THRESHOLD:
         print(f"  {Fore.YELLOW}[WARN]{Style.RESET_ALL} Thread count {cur_threads} exceeds recommended limit.")
     print()
+
+    stress_n = getattr(args, "crc32_stress", 0) or 0
+    if stress_n > 0:
+        from wfh_modules.benchmark_suite import stress_crc32_dedup, format_crc32_stress_report
+        _info(f"Running CRC32 dedup stress test ({stress_n:,} lines)...")
+        result = stress_crc32_dedup(stress_n)
+        print(format_crc32_stress_report(result))
 
 
 def cmd_corp_prefixes(args: argparse.Namespace) -> None:
@@ -4025,7 +4205,8 @@ def main() -> None:
         "scrape":   cmd_scrape,
         "ocr":      cmd_ocr,
         "extract":  cmd_extract,
-        "leet":     cmd_leet,
+        "leet":       cmd_leet,
+        "leet-perm":  cmd_leet_perm,
         "xor":      cmd_xor,
         "analyze":  cmd_analyze,
         "merge":    cmd_merge,

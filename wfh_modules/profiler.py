@@ -330,7 +330,18 @@ def _build_pets_relationship_pool(
             seen.add(tok)
             extended.append(tok)
 
-    return list(dict.fromkeys(base + adoption_priority + [t for t in extended if t not in base]))
+    plain_heads: list[str] = []
+    for pet_name in names:
+        for variant in dict.fromkeys([
+            pet_name,
+            pet_name.capitalize(),
+            pet_name.lower(),
+            pet_name.upper(),
+        ]):
+            if variant:
+                plain_heads.append(variant)
+
+    return list(dict.fromkeys(plain_heads + adoption_priority + base + extended))
 
 
 def _build_corp_relationship_pool(profile: dict, leet_mode: str) -> list[str]:
@@ -1544,7 +1555,7 @@ def _emit_pair_combos(
     if not pool_a or not pool_b:
         return
     for a in pool_a[:20]:
-        for b in pool_b[:40]:
+        for b in pool_b[:48]:
             if a.lower() == b.lower():
                 continue
             for sep in seps:
@@ -1610,7 +1621,7 @@ def _emit_triple_combos(
         return
     for a in pool_a[:22]:
         for mid in mid_list:
-            for b in pool_b[:32]:
+            for b in pool_b[:48]:
                 if a.lower() == b.lower():
                     continue
                 for pref in prefixes:
@@ -2561,6 +2572,10 @@ def generate_from_profile(
         effective_min = profile["min_len"]
     if profile.get("max_len"):
         effective_max = profile["max_len"]
+    for kt in profile.get("known_targets") or []:
+        if isinstance(kt, str) and kt:
+            effective_max = max(effective_max, len(kt))
+            effective_min = min(effective_min, len(kt))
     if profile.get("with_spaces"):
         with_spaces = profile["with_spaces"]
     if profile.get("include_specials"):

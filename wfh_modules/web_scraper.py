@@ -219,14 +219,24 @@ class WebScraper:
         """
         if content_type == "html":
             soup = BeautifulSoup(text, "lxml")
-            decompose_tags = ["noscript"]
-            if not self.include_js:
-                decompose_tags.append("script")
-            if not self.include_css:
-                decompose_tags.append("style")
+            inline_parts: list[str] = []
+            if self.include_js:
+                for tag in soup.find_all("script"):
+                    src = (tag.get("src") or "").strip()
+                    body = tag.string or tag.get_text() or ""
+                    if body.strip() and not src:
+                        inline_parts.append(body)
+            if self.include_css:
+                for tag in soup.find_all("style"):
+                    body = tag.string or tag.get_text() or ""
+                    if body.strip():
+                        inline_parts.append(body)
+            decompose_tags = ["noscript", "script", "style"]
             for tag in soup(decompose_tags):
                 tag.decompose()
             plain = soup.get_text(separator=" ")
+            if inline_parts:
+                plain = plain + " " + " ".join(inline_parts)
         else:
             plain = text
 

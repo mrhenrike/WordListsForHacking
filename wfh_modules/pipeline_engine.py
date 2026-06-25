@@ -81,6 +81,9 @@ class PipelineConfig:
         cfg.min_len     = profile.get("min_len", 6)
         cfg.max_len     = profile.get("max_len", 32)
         cfg.known_targets = list(profile.get("known_targets") or [])
+        if cfg.known_targets:
+            cfg.max_len = max(cfg.max_len, max(len(t) for t in cfg.known_targets if t))
+            cfg.min_len = min(cfg.min_len, min(len(t) for t in cfg.known_targets if t))
 
         # Engine selection
         engines_raw = profile.get("engines")
@@ -1026,22 +1029,22 @@ class ProfilePipeline:
             "elapsed_secs": round(elapsed, 2),
         }
 
-        # Feedback loop: benchmark vs known_targets
-        if self.config.known_targets:
-            result["feedback"] = self.run_feedback(str(out_path))
-
         # Post-rank passes (motors 15 / 16)
         rank_info = self._apply_post_rank(str(out_path))
         if rank_info:
             result["post_rank"] = rank_info
 
-        # Archive export (se configurado)
+        # Archive export (sanitize/sort) — before feedback so report matches final file
         if self.config.output_format not in ("lst", "txt") or self.config.sanitize:
             try:
                 archive_result = self._run_archive_export(str(out_path))
                 result["archive"] = archive_result
             except Exception as exc:
                 logger.warning("archive_export falhou: %s", exc)
+
+        # Feedback loop: benchmark vs known_targets (after final export)
+        if self.config.known_targets:
+            result["feedback"] = self.run_feedback(str(out_path))
 
         return result
 

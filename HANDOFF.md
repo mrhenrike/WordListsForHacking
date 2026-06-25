@@ -1,5 +1,35 @@
 # HANDOFF — WordListsForHacking
 
+## [2026-06-23] — Parsers CLI, fase 4 parity, README local-only
+
+### Estado ao encerrar
+- wfh.py: parsers expostos para `osint-perm`, `cupp`, `pattern-rank`, `scrape-target` (handlers já existiam)
+- wfh.py: `--leet` default None — perfil YAML `leet_mode: aggressive` não é mais sobrescrito
+- kwalk_gen.py: rotas explícitas via `--route` / `--route-file` (paridade kwprocessor)
+- markov_engine.py: smoothing Laplace (`--smoothing`, default 0.01)
+- combiner.py: dedup case-insensitive via `casefold()`
+- prince_engine.py: flags `--wordlen-min/max` e `--superchop`
+- sanitizer.py: senhas iniciando com `#` (ex. `#d@ryu5@CS`) não são tratadas como comentário
+- profiler.py: pets pool prioriza nomes plain + sufixos de adoção; slices triple/pair ampliados
+- pipeline_engine.py: `max_len` estende para `known_targets`; feedback após export final
+- i18n: chaves `engines.cewl_mut.*` e `.desc` para motores principais
+- README: badge PyPI removido; instalação só clone + requirements; 43 subcomandos
+- **Melissa pipeline: 3/3 known_targets (100% hit rate)**
+
+### Próximo passo imediato
+- Wiki: documentar novos subcomandos e `improve`/`maya-rank`
+
+### Pendências conhecidas
+- [ ] Stress test CRC32 dedup >100k linhas em hardware alvo (use `sysinfo --crc32-stress 150000`)
+
+### Ambiente necessário
+- Python 3.9+
+- PyYAML, requirements.txt
+- Perfil Melissa: `Projetos-SafeLabs/laboratory/training/iot-xpl-forge/examples/melissa-andrade-profile.yaml`
+
+### Paths importantes
+- Linux: `/home/mrhenrike/Documentos/Projetos/Projetos-SafeLabs/submodules/Uniao-Geek/WordListsForHacking/`
+
 ## [2026-06-25 13:45] — Criação de rsmangler_engine e generation_engines
 
 ### Estado ao encerrar
