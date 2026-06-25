@@ -32,7 +32,7 @@ _LEET: Dict[str, str] = {
     "o": "0", "s": "5", "g": "9", "z": "2", "l": "1",
 }
 
-# Common password suffixes added to word stems
+# Common password suffixes (preserved for backward compatibility)
 _COMMON_SUFFIXES = [
     "", "1", "12", "123", "1234", "12345",
     "!", "@", "#", "01", "02",
@@ -41,6 +41,15 @@ _COMMON_SUFFIXES = [
 
 # Special chars appended to indicate common patterns
 _SPECIAL_CHARS = ["!", "@", "#", "$", "*", ".", "_", "-"]
+
+_OWASP_CHARS: List[str] = [
+    "!", "@", "#", "$", "%", "^", "&", "*",
+    "(", ")", "-", "_", "+", "=", ".", ",", "?",
+]
+
+_BASIC_SPECIAL: List[str] = ["!", "@", "#", "$"]
+
+_COMMON_YEARS: List[str] = ["2020", "2021", "2022", "2023", "2024", "2025"]
 
 
 def _make_leet(word: str) -> List[str]:
@@ -103,7 +112,75 @@ class OsintProfile:
     phone: str = ""               # Digits only
     old_passwords: List[str] = field(default_factory=list)
     keywords: List[str] = field(default_factory=list)
-    complexity: int = 1           # 1=basic, 2=full
+    level: int = 1
+    complexity: int = field(default=0, repr=False)   # alias for level; 0 = unset
+    years: List[str] = field(default_factory=list)
+    nums_range: tuple = (0, 99)
+    special_chars: List[str] = field(default_factory=list)
+    apply_post_leet: bool = False
+
+    def __post_init__(self) -> None:
+        if self.complexity != 0 and self.level == 1:
+            self.level = self.complexity
+        self.complexity = self.level
+
+
+def _recipes(
+    level: int,
+    years: List[str],
+    nums_range: tuple,
+    special_chars: List[str],
+) -> List[str]:
+    """Return suffix/append recipes based on generation level.
+
+    Args:
+        level: Generation level (0-5).
+        years: Custom years to append at level >= 4.
+        nums_range: (start, end) inclusive numeric range appended at level >= 2.
+        special_chars: Extra special characters appended at level >= 2.
+
+    Returns:
+        Ordered, deduplicated list of suffix strings to append to candidates.
+    """
+    if level == 0:
+        return []
+
+    recipes: List[str] = ["", "1", "12", "123"] + _COMMON_YEARS
+
+    if level >= 2:
+        num_start, num_end = nums_range
+        recipes += [str(n) for n in range(num_start, min(num_end + 1, num_start + 200))]
+        for c in _BASIC_SPECIAL + special_chars:
+            if c not in recipes:
+                recipes.append(c)
+
+    if level >= 3:
+        for c in _OWASP_CHARS:
+            if c not in recipes:
+                recipes.append(c)
+
+    if level >= 4:
+        for y in years:
+            if y not in recipes:
+                recipes.append(y)
+
+    return list(dict.fromkeys(recipes))
+
+
+def post_leet_perm(candidates: List[str], max_per_word: int = 256) -> List[str]:
+    """Apply global cartesian leet permutation over a candidate list.
+
+    Calls leet_perm_wordlist from leet_permuter for a full elpscrk-style pass.
+
+    Args:
+        candidates: List of password candidates post-generation.
+        max_per_word: Maximum product iterations per candidate word.
+
+    Returns:
+        Deduplicated list of all leet variants.
+    """
+    from wfh_modules.leet_permuter import leet_perm_wordlist
+    return list(leet_perm_wordlist(candidates, max_per_word=max_per_word))
 
 
 class OsintPermGenerator:
@@ -125,9 +202,10 @@ class OsintPermGenerator:
             Deduplicated list of password candidates.
         """
         candidates = []
-        level = profile.complexity
+        level = profile.level
 
-        # Collect base words from profile fields
+        suffixes = _recipes(level, profile.years, profile.nums_range, profile.special_chars)
+
         base_words = []
         for field_val in [
             profile.first_name, profile.last_name,
@@ -136,68 +214,63 @@ class OsintPermGenerator:
             if field_val.strip():
                 base_words.append(field_val.strip())
 
-        # Add keywords
         base_words.extend(k.strip() for k in profile.keywords if k.strip())
 
-        # Generate word variants
-        all_word_variants = []
+        all_word_variants: List[str] = []
         for word in base_words:
             all_word_variants.extend(_word_variants(word, level))
 
-        # Standalone words
         candidates.extend(all_word_variants)
 
-        # Words + common suffixes
         for word in all_word_variants:
-            for suf in _COMMON_SUFFIXES:
+            for suf in suffixes:
                 candidates.append(word + suf)
 
-        # Date variants
         for date_str in [profile.birth_date, profile.anniversary_date]:
             if date_str.strip():
                 date_vars = _date_variants(date_str)
                 candidates.extend(date_vars)
-                # Words + dates
                 for word in all_word_variants:
                     for dv in date_vars:
                         candidates.append(word + dv)
                         if level >= 2:
                             candidates.append(dv + word)
 
-        # Phone patterns
         if profile.phone:
             phone_digits = "".join(c for c in profile.phone if c.isdigit())
             if phone_digits:
                 candidates.extend([
                     phone_digits,
-                    phone_digits[-8:],   # last 8 digits
-                    phone_digits[-9:],   # last 9 digits
-                    phone_digits[:4],    # area code
+                    phone_digits[-8:],
+                    phone_digits[-9:],
+                    phone_digits[:4],
                 ])
                 for word in all_word_variants[:5]:
                     candidates.append(word + phone_digits[-4:])
 
-        # Old password variants
         for old_pwd in profile.old_passwords:
             if old_pwd.strip():
                 candidates.extend(_make_leet(old_pwd))
                 for suf in ["1", "2", "!", "2024", "2025"]:
                     candidates.append(old_pwd + suf)
+                if level >= 2:
+                    candidates += [old_pwd.upper(), old_pwd.lower(), old_pwd[::-1]]
 
-        # Word pairs (level 2)
         if level >= 2 and len(all_word_variants) > 1:
             for w1, w2 in itertools.combinations(all_word_variants[:6], 2):
                 candidates.append(w1 + w2)
                 candidates.append(w1 + "_" + w2)
 
-        # Filter: min length 4, max length 32
-        result = []
-        seen = set()
+        result: List[str] = []
+        seen: set = set()
         for c in candidates:
             c = c.strip()
             if 4 <= len(c) <= 32 and c not in seen:
                 seen.add(c)
                 result.append(c)
+
+        if profile.apply_post_leet:
+            result = post_leet_perm(result, max_per_word=256)
 
         return result
 

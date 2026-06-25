@@ -18,14 +18,46 @@ import json
 import logging
 import re
 import uuid
+import zlib
 from datetime import datetime, date
-from itertools import permutations as _permutations
+from itertools import permutations as _permutations, product as _product
 from pathlib import Path
 from typing import Generator, Optional
 
 _MODULE_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _MODULE_DIR.parent
 _BEHAVIOR_DB: Optional[dict] = None
+
+
+class _SeenSet:
+    """CRC32-based deduplication set.
+
+    Stores 32-bit hashes instead of full strings, reducing memory usage by ~10x
+    compared to a plain set[str] when handling large wordlists.
+
+    Supports the same ``in`` / ``add`` / ``discard`` interface as ``set`` for
+    drop-in compatibility with callers that treat it as a set of strings.
+    """
+
+    __slots__ = ("_hashes",)
+
+    def __init__(self) -> None:
+        self._hashes: set[int] = set()
+
+    @staticmethod
+    def _h(s: str) -> int:
+        return zlib.crc32(s.encode("utf-8", errors="replace")) & 0xFFFFFFFF
+
+    def __contains__(self, s: object) -> bool:
+        if not isinstance(s, str):
+            return False
+        return self._h(s) in self._hashes
+
+    def add(self, s: str) -> None:
+        self._hashes.add(self._h(s))
+
+    def discard(self, s: str) -> None:
+        self._hashes.discard(self._h(s))
 
 
 def _find_data_file(filename: str) -> Path:
@@ -122,6 +154,82 @@ def load_profile_yaml(filepath: str) -> dict:
             data[list_field] = []
 
     data = _normalize_profile_pets(data)
+    data = _normalize_date_fields(data)
+    return data
+
+
+def _normalize_date_fields(data: dict) -> dict:
+    """
+    Normaliza campos de data do perfil YAML para o formato legado esperado pelo profiler.
+
+    Suporta dois formatos:
+      - Legado: birth_day, birth_month, birth_year como inteiros separados.
+      - Estruturado: birth: {mode: age_sign, age: 26, sign: touro} ou birth: "dd/mm/yyyy".
+
+    Também processa ``hire`` para entidades corporativas (mesma lógica).
+    """
+    try:
+        from wfh_modules.date_profile import date_profile_from_yaml, build_date_tokens
+        from wfh_modules.i18n import get_session_locale
+    except ImportError:
+        return data
+
+    locale = data.get("locale") or get_session_locale()
+
+    # ── Campo birth ────────────────────────────────────────────────────────────
+    birth_raw = data.get("birth")
+    if birth_raw is not None and not isinstance(birth_raw, int):
+        dp = date_profile_from_yaml(birth_raw, locale)
+        if dp:
+            dp_dict = dp.to_dict()
+            # Preservar campos legados: só sobrescrever se ainda em zero (não definidos)
+            if not data.get("birth_day"):
+                data["birth_day"] = dp_dict["birth_day"]
+            if not data.get("birth_month"):
+                data["birth_month"] = dp_dict["birth_month"]
+            if not data.get("birth_year"):
+                data["birth_year"] = dp_dict["birth_year"]
+            # Campos novos (sem conflito com legado)
+            data["birth_mode"] = dp_dict["birth_mode"]
+            data["birth_age"] = dp_dict["birth_age"]
+            data["birth_sign_index"] = dp_dict["birth_sign_index"]
+            data["birth_year_min"] = dp_dict["birth_year_min"]
+            data["birth_year_max"] = dp_dict["birth_year_max"]
+            data["birth_locale"] = dp_dict["birth_locale"]
+            # Pré-calcular tokens de data para uso posterior
+            data.setdefault("_date_tokens", [])
+            data["_date_tokens"] = build_date_tokens(dp, locale)
+
+    # ── Campo hire (empresa) ───────────────────────────────────────────────────
+    hire_raw = data.get("hire")
+    if hire_raw is not None and not isinstance(hire_raw, int):
+        dp = date_profile_from_yaml(hire_raw, locale)
+        if dp:
+            dp_dict = dp.to_dict()
+            data["hire_day"] = dp_dict["birth_day"]
+            data["hire_month"] = dp_dict["birth_month"]
+            data["hire_year"] = dp_dict["birth_year"]
+            data["hire_mode"] = dp_dict["birth_mode"]
+            data["hire_age"] = dp_dict["birth_age"]
+            data["hire_sign_index"] = dp_dict["birth_sign_index"]
+            data["hire_year_min"] = dp_dict["birth_year_min"]
+            data["hire_year_max"] = dp_dict["birth_year_max"]
+            data.setdefault("_hire_date_tokens", [])
+            data["_hire_date_tokens"] = build_date_tokens(dp, locale)
+
+    # ── Normalizar partner birth estruturado ──────────────────────────────────
+    if isinstance(data.get("partner"), dict):
+        partner = data["partner"]
+        pb_raw = partner.get("birth")
+        if pb_raw is not None and not isinstance(pb_raw, int):
+            dp = date_profile_from_yaml(pb_raw, locale)
+            if dp:
+                dp_dict = dp.to_dict()
+                partner.setdefault("birth_day", dp_dict["birth_day"])
+                partner.setdefault("birth_month", dp_dict["birth_month"])
+                partner.setdefault("birth_year", dp_dict["birth_year"])
+                partner["_date_tokens"] = build_date_tokens(dp, locale)
+
     return data
 
 
@@ -193,7 +301,7 @@ def _build_pets_relationship_pool(
 
     do_leet = leet_mode not in ("none", "")
     base: list[str] = []
-    seen: set[str] = set()
+    seen: _SeenSet = _SeenSet()
     for pet_name in names:
         for variant in _word_variants(pet_name, leet=do_leet, leet_mode=leet_mode):
             if variant and variant not in seen:
@@ -651,7 +759,7 @@ def _keyword_abbreviations(text: str) -> list[str]:
             break
 
     result: list[str] = []
-    seen: set[str] = set()
+    seen: _SeenSet = _SeenSet()
     for a in found:
         for v in (a.upper(), a.lower(), a.capitalize()):
             if v not in seen:
@@ -851,6 +959,44 @@ def _extra_date_fragments(day: int, month: int, year: int) -> list[str]:
     return list(dict.fromkeys(frags))
 
 
+def _date_fragment_combos(date_tokens: list[str], max_combos: int = 200) -> list[str]:
+    """Generate CUPP-style bdss cartesian products from numeric date fragments.
+
+    Filters numeric-only tokens of 2-4 chars, then yields all pairwise
+    concatenations (f1+f2) and separator-joined forms (f1+sep+f2).
+    Equivalent to CUPP's ``bdss`` / ``kbdss`` logic.
+
+    Args:
+        date_tokens: List of raw date token strings (may include non-numeric).
+        max_combos: Upper limit on total combos returned (avoids explosion).
+
+    Returns:
+        Deduplicated list of combined date fragment strings.
+    """
+    candidates = [
+        t for t in date_tokens
+        if t.isdigit() and 2 <= len(t) <= 4
+    ]
+    candidates = list(dict.fromkeys(candidates))
+
+    seps = ["", "-", "/"]
+    seen: set[str] = set()
+    combos: list[str] = []
+
+    for f1, f2 in _product(candidates, candidates):
+        if f1 == f2:
+            continue
+        for sep in seps:
+            combo = f"{f1}{sep}{f2}"
+            if combo not in seen:
+                seen.add(combo)
+                combos.append(combo)
+                if len(combos) >= max_combos:
+                    return combos
+
+    return combos
+
+
 def _phone_fragments(phone: str) -> list[str]:
     """Decompose phone into fragments: last 4, first 4, national format (elpscrk parity)."""
     digits = re.sub(r"\D", "", phone)
@@ -876,6 +1022,39 @@ HACKER_SUFFIXES: list[str] = [
     "@0x90", "#0x90", "_0x90", "!0x90",
     "@0x41", "#0x41", "@0x00", "_0x00",
 ]
+
+_BIRTHSTONES: dict[int, list[str]] = {
+    1: ["garnet"],
+    2: ["amethyst"],
+    3: ["aquamarine", "bloodstone"],
+    4: ["diamond"],
+    5: ["emerald"],
+    6: ["pearl", "moonstone"],
+    7: ["ruby"],
+    8: ["peridot", "spinel"],
+    9: ["sapphire"],
+    10: ["opal", "tourmaline"],
+    11: ["topaz", "citrine"],
+    12: ["tanzanite", "zircon", "turquoise"],
+}
+
+
+def get_birthstone_tokens(month: int) -> list[str]:
+    """Return birthstone names for a given birth month as profile tokens.
+
+    Returns list with each stone name in lowercase and capitalized form.
+    """
+    stones = _BIRTHSTONES.get(month, [])
+    tokens: list[str] = []
+    for stone in stones:
+        low = stone.lower()
+        cap = stone.capitalize()
+        if low not in tokens:
+            tokens.append(low)
+        if cap not in tokens:
+            tokens.append(cap)
+    return tokens
+
 
 # PT-BR informal shorthands used in phrase-initial extraction
 _BR_INITIALS_MAP: dict[str, str] = {
@@ -999,7 +1178,7 @@ def phrase_initials_variants(
     )
 
     results: list[str] = []
-    seen: set[str] = set()
+    seen: _SeenSet = _SeenSet()
 
     for base in all_bases:
         for pref in prefixes:
@@ -1016,7 +1195,7 @@ def _emit_phrase_initials_combos(
     profile: dict,
     min_len: int,
     max_len: int,
-    seen: set[str],
+    seen: "_SeenSet | set[str]",
 ) -> Generator[str, None, None]:
     """
     Yield acrostic passwords from personal phrases/jargon in the profile.
@@ -1041,6 +1220,77 @@ def _emit_phrase_initials_combos(
             if variant and variant not in seen and min_len <= len(variant) <= max_len:
                 seen.add(variant)
                 yield variant
+
+
+def _emit_phrase_full_combos(
+    profile: dict,
+    min_len: int,
+    max_len: int,
+    seen: "_SeenSet | set[str]",
+    *,
+    do_leet: bool = False,
+    leet_mode: str = "basic",
+) -> Generator[str, None, None]:
+    """Yield full-phrase password variants (motor 6 / phrase_mode full)."""
+    phrases = list(profile.get("phrases") or []) + list(profile.get("jargon_phrases") or [])
+    if not phrases:
+        return
+
+    phrase_opts = profile.get("phrase_options") or {}
+    use_prefixes = profile.get("phrase_prefixes", phrase_opts.get("prefixes", True))
+    use_year_suffix = profile.get(
+        "phrase_suffix_years",
+        phrase_opts.get("suffix_years", True),
+    )
+    lookback = int(profile.get("recent_years_lookback", 1))
+
+    prefixes = ["", "_", "@", "#"] if use_prefixes else [""]
+    suffixes: list[str] = [""]
+    if use_year_suffix and profile.get("include_recent_years", True):
+        suffixes.extend(
+            _phrase_initials_suffixes(
+                None,
+                include_recent_years=True,
+                recent_years_lookback=lookback,
+            )
+        )
+
+    for phrase in phrases:
+        if not phrase or not str(phrase).strip():
+            continue
+        words = _split_words(str(phrase))
+        if not words:
+            continue
+
+        bases: list[str] = []
+        joined = "".join(words)
+        underscored = "_".join(words)
+        dotted = ".".join(words)
+        for base in (joined, underscored, dotted, strip_accents(joined)):
+            if base:
+                bases.append(base)
+
+        expanded: list[str] = []
+        for base in bases:
+            expanded.append(base)
+            expanded.append(base.lower())
+            expanded.append(base.upper())
+            expanded.append(base.capitalize())
+            if do_leet:
+                for variant in _word_variants(base, leet=True, leet_mode=leet_mode):
+                    expanded.append(variant)
+
+        for base in dict.fromkeys(expanded):
+            for pref in prefixes:
+                for suff in suffixes:
+                    candidate = f"{pref}{base}{suff}"
+                    if (
+                        candidate
+                        and candidate not in seen
+                        and min_len <= len(candidate) <= max_len
+                    ):
+                        seen.add(candidate)
+                        yield candidate
 
 
 # Leet tables alias — defined above near LEET_BASIC
@@ -1159,7 +1409,7 @@ def password_variants(
     suffixes = list(dict.fromkeys(default_suffixes + (extra_suffixes or [])))
 
     results: list[str] = []
-    seen: set[str] = set()
+    seen: _SeenSet = _SeenSet()
 
     for base in all_bases:
         for pref in prefixes:
@@ -1183,7 +1433,7 @@ def _prioritize_tokens_for_pairing(tokens: list[str]) -> list[str]:
     names: list[str] = []
     year_suffix: list[str] = []
     other: list[str] = []
-    seen: set[str] = set()
+    seen: _SeenSet = _SeenSet()
     for t in tokens:
         if t in seen:
             continue
@@ -1259,7 +1509,7 @@ def _build_token_pool(
     When leet_mode is ``none``, only plain case variants are included.
     """
     pool: list[str] = []
-    seen: set[str] = set()
+    seen: _SeenSet = _SeenSet()
     do_leet = leet_mode not in ("none", "")
 
     for raw in raw_values:
@@ -1376,7 +1626,7 @@ def _emit_profile_relationship_combos(
     date_tokens: list[str],
     min_len: int,
     max_len: int,
-    seen: set[str],
+    seen: "_SeenSet | set[str]",
     *,
     include_specials: bool = False,
     with_spaces: bool = False,
@@ -1604,7 +1854,7 @@ def _emit_all(
     min_len: int,
     max_len: int,
     with_spaces: bool,
-    seen: set[str],
+    seen: "_SeenSet | set[str]",
     depth: int = 3,
 ) -> Generator[str, None, None]:
     """Yield all combinations of tokens, dates, separators.
@@ -1798,199 +2048,259 @@ def _ask_multi(prompt: str) -> list[str]:
     return values
 
 
+def _yes(raw: str) -> bool:
+    """True if the user answered affirmatively."""
+    return raw.lower() in ("y", "yes", "s", "si", "sim", "oui")
+
+
+def _no(raw: str) -> bool:
+    """True if the user answered negatively."""
+    return raw.lower() in ("n", "no", "nao", "não", "non")
+
+
 def interactive_profile() -> dict:
     """
-    Full interactive personal profiling wizard.
+    Full interactive personal profiling wizard with i18n support.
+
+    The first prompt selects the session language; all subsequent prompts
+    are shown in the chosen locale. Default locale is 'en'.
 
     Returns:
         Dict with all collected profile data.
     """
-    print("\n" + "=" * 58)
-    print("  Personal Target Profiler — Wordlist Generator")
-    print("=" * 58)
-    print("  Press Enter to skip any field.\n")
+    from wfh_modules.i18n import t, ask_language_selection, get_session_locale
+    from wfh_modules.date_profile import ask_date_profile, build_date_tokens
 
-    profile: dict = {}
+    # ── Language selection (first screen) ─────────────────────
+    locale = ask_language_selection()
+    profile: dict = {"locale": locale}
+
+    print("\n" + "=" * 58)
+    print(f"  {t('wizard.header')}")
+    print("=" * 58 + "\n")
 
     # ── Personal ─────────────────────────────────────────────
-    print("[ PERSONAL INFORMATION ]")
-    profile["full_name"] = _ask("Full name")
-    profile["short_name"] = _ask("Short name or part of name")
-    profile["nicknames"] = _ask_multi("Nicknames/aliases")
+    print(t("section.personal"))
+    profile["full_name"] = _ask(t("field.full_name"))
+    profile["short_name"] = _ask(t("field.short_name"))
+    profile["nicknames"] = _ask_multi(t("field.nicknames"))
 
-    birth_raw = _ask("Date of birth (dd/mm/yyyy, ddmmyyyy, yyyy, or approximate age)")
-    if birth_raw.isdigit() and int(birth_raw) < 120:
-        profile["birth_year"] = estimate_birth_year(int(birth_raw))
-        profile["birth_day"] = 0
-        profile["birth_month"] = 0
-    else:
-        parsed = parse_date_input(birth_raw)
-        if parsed:
-            profile["birth_day"], profile["birth_month"], profile["birth_year"] = parsed
-        else:
-            profile["birth_day"] = profile["birth_month"] = profile["birth_year"] = 0
+    dp = ask_date_profile(t("field.full_name"), locale)
+    dp_dict = dp.to_dict()
+    profile.update({
+        "birth_day":        dp_dict["birth_day"],
+        "birth_month":      dp_dict["birth_month"],
+        "birth_year":       dp_dict["birth_year"],
+        "birth_mode":       dp_dict["birth_mode"],
+        "birth_age":        dp_dict["birth_age"],
+        "birth_sign_index": dp_dict["birth_sign_index"],
+        "birth_year_min":   dp_dict["birth_year_min"],
+        "birth_year_max":   dp_dict["birth_year_max"],
+        "birth_locale":     dp_dict["birth_locale"],
+        "_date_tokens":     build_date_tokens(dp, locale),
+    })
 
-    profile["national_id"] = _ask("National ID / SSN / CPF (or leave blank)")
-    profile["phones"] = _ask_multi("Phone numbers (DDI+DDD+number, e.g. +5511912345678)")
-    profile["location_city"] = _ask("City / hometown")
-    profile["location_state"] = _ask("State / province / region")
-    profile["location_country"] = _ask("Country")
+    profile["national_id"] = _ask(t("field.national_id"))
+    profile["phones"] = _ask_multi(t("field.phones"))
+    profile["location_city"] = _ask(t("field.city"))
+    profile["location_state"] = _ask(t("field.state"))
+    profile["location_country"] = _ask(t("field.country"))
     if profile.get("location_country"):
-        from wfh_modules.country_tokens import resolve_country, country_display_name
-        _country_key = resolve_country(profile["location_country"])
-        if _country_key:
-            profile["location_country_key"] = _country_key
-            print(f"  → Country resolved: {country_display_name(_country_key)} ({_country_key})")
-        print("  Country tokens — two modes:")
-        print("    Full    → ISO (BR), names (Brasil/Brazil), DDI (55), leet, combos with name/corp/dates")
-        print("    Minimal → ISO + country name only (fewer entries, recommended if list grows too large)")
-        profile["include_country_variations"] = _ask(
-            "Include full country variations? [Y/n]"
-        ).lower() not in ("n", "no")
+        try:
+            from wfh_modules.country_tokens import resolve_country, country_display_name
+            _country_key = resolve_country(profile["location_country"])
+            if _country_key:
+                profile["location_country_key"] = _country_key
+                print(f"  → Country resolved: {country_display_name(_country_key)} ({_country_key})")
+        except ImportError:
+            pass
+        profile["include_country_variations"] = not _no(_ask(t("country.full_variations")))
     else:
         profile["include_country_variations"] = False
 
     # ── Partner ───────────────────────────────────────────────
-    print("\n[ PARTNER / SPOUSE ]")
-    has_partner = _ask("Add partner data? [y/N]").lower() in ("y", "yes")
-    if has_partner:
-        profile["partner_name"] = _ask("Partner full name")
-        profile["partner_nick"] = _ask("Partner nickname")
-        partner_birth = _ask("Partner date of birth")
-        parsed = parse_date_input(partner_birth)
-        if parsed:
-            profile["partner_birth_day"], profile["partner_birth_month"], profile["partner_birth_year"] = parsed
-        else:
-            profile["partner_birth_day"] = profile["partner_birth_month"] = profile["partner_birth_year"] = 0
+    print(f"\n{t('section.partner')}")
+    if _yes(_ask(t("partner.add"))):
+        profile["partner_name"] = _ask(t("partner.full_name"))
+        profile["partner_nick"] = _ask(t("partner.nick"))
+        pdp = ask_date_profile(t("partner.full_name"), locale)
+        pdp_dict = pdp.to_dict()
+        profile["partner_birth_day"]   = pdp_dict["birth_day"]
+        profile["partner_birth_month"] = pdp_dict["birth_month"]
+        profile["partner_birth_year"]  = pdp_dict["birth_year"]
+        profile["_partner_date_tokens"] = build_date_tokens(pdp, locale)
 
     # ── Children ──────────────────────────────────────────────
-    print("\n[ CHILDREN ]")
-    has_children = _ask("Add children data? [y/N]").lower() in ("y", "yes")
-    if has_children:
+    print(f"\n{t('section.children')}")
+    if _yes(_ask(t("children.add"))):
         profile["children"] = []
         while True:
-            child_name = _ask("Child name (or Enter to stop)")
+            child_name = _ask(t("children.name"))
             if not child_name:
                 break
-            child_birth = _ask(f"  {child_name} date of birth")
-            parsed = parse_date_input(child_birth)
-            bd, bm, by = parsed if parsed else (0, 0, 0)
+            cdp = ask_date_profile(child_name, locale)
+            cdp_dict = cdp.to_dict()
             profile["children"].append({
-                "name": child_name,
-                "birth_day": bd,
-                "birth_month": bm,
-                "birth_year": by,
+                "name":         child_name,
+                "birth_day":    cdp_dict["birth_day"],
+                "birth_month":  cdp_dict["birth_month"],
+                "birth_year":   cdp_dict["birth_year"],
+                "_date_tokens": build_date_tokens(cdp, locale),
             })
 
     # ── Pets ──────────────────────────────────────────────────
-    print("\n[ PETS ]")
-    print("  Tip: adoption year enables corp#Pet25 patterns (e.g. Daryus#OzZY25).")
-    has_pets = _ask("Add pet data? [y/N]").lower() in ("y", "yes")
-    if has_pets:
+    print(f"\n{t('section.pets')}")
+    if _yes(_ask(t("pets.add"))):
         profile["pets"] = []
         while True:
-            pet_name = _ask("Pet name (or Enter to stop)")
+            pet_name = _ask(t("pets.name"))
             if not pet_name:
                 break
-            pet_year = _ask(f"  {pet_name} adoption/since year (YYYY, or Enter to skip)")
-            if pet_year.strip().isdigit() and len(pet_year.strip()) == 4:
-                profile["pets"].append({"name": pet_name, "year": int(pet_year.strip())})
+            pet_year_raw = _ask(t("pets.year", name=pet_name))
+            if pet_year_raw.strip().isdigit() and len(pet_year_raw.strip()) == 4:
+                profile["pets"].append({"name": pet_name, "year": int(pet_year_raw.strip())})
             else:
                 profile["pets"].append(pet_name)
 
     # ── Corporate ─────────────────────────────────────────────
-    print("\n[ CORPORATE DATA ]")
-    has_corp = _ask("Add corporate data? [y/N]").lower() in ("y", "yes")
-    if has_corp:
-        profile["company_name"] = _ask("Company name / trade name")
-        profile["company_legal"] = _ask("Legal company name (razão social)")
-        profile["company_department"] = _ask("Department / team / role (e.g. Cyber Security, SOC)")
-        profile["company_email"] = _ask("Corporate email")
-        profile["company_domain"] = _ask("Company domain (e.g. company.com)")
+    print(f"\n{t('section.corporate')}")
+    if _yes(_ask(t("corp.add"))):
+        profile["company_name"]       = _ask(t("corp.name"))
+        profile["company_legal"]      = _ask(t("corp.legal"))
+        profile["company_department"] = _ask(t("corp.department"))
+        profile["company_email"]      = _ask(t("corp.email"))
+        profile["company_domain"]     = _ask(t("corp.domain"))
+        hdp = ask_date_profile(t("corp.hire_date"), locale)
+        hdict = hdp.to_dict()
+        profile["hire_day"]          = hdict["birth_day"]
+        profile["hire_month"]        = hdict["birth_month"]
+        profile["hire_year"]         = hdict["birth_year"]
+        profile["hire_mode"]         = hdict["birth_mode"]
+        profile["_hire_date_tokens"] = build_date_tokens(hdp, locale)
 
     # ── Social media ──────────────────────────────────────────
-    print("\n[ SOCIAL MEDIA ]")
-    profile["social_handles"] = _ask_multi(
-        "Social media handles (with or without @, e.g. @mrhenrike or mrhenrike)"
-    )
+    profile["social_handles"] = _ask_multi(t("social.handles"))
 
     # ── Religion ──────────────────────────────────────────────
-    print("\n[ RELIGION & FAITH ]")
+    print(f"\n{t('section.religion')}")
     profile["religion_key"] = None
     profile["religion_custom"] = None
     profile["church_name"] = None
     profile["church_group"] = None
 
-    has_religion = _ask("Add religion data? [y/N]").lower() in ("y", "yes")
-    if has_religion:
+    if _yes(_ask(t("religion.add"))):
         religions = list_religions()
         print("\n  Available religions (enter number or press Enter to type custom):")
         for idx, (key, display) in enumerate(religions, 1):
             print(f"    {idx:>2}. {display}")
         print(f"    {len(religions)+1:>2}. Other / not listed")
 
-        choice_raw = _ask(f"  Select [1-{len(religions)+1}]").strip()
+        choice_raw = _ask(t("religion.select", range=f"1-{len(religions)+1}")).strip()
         if choice_raw.isdigit():
             choice = int(choice_raw)
             if 1 <= choice <= len(religions):
                 profile["religion_key"] = religions[choice - 1][0]
                 print(f"  Selected: {religions[choice - 1][1]}")
             else:
-                profile["religion_custom"] = _ask("  Enter your religion name")
+                profile["religion_custom"] = _ask(t("religion.custom"))
         else:
             profile["religion_custom"] = choice_raw if choice_raw else None
 
-        # Church / congregation (only if religion was filled)
         if profile["religion_key"] or profile["religion_custom"]:
             print()
-            has_church = _ask("Add church / congregation / group data? [y/N]").lower() in ("y", "yes")
-            if has_church:
-                profile["church_name"] = _ask("  Church or congregation name (e.g. Assembleia de Deus SP)")
-                profile["church_group"] = _ask("  Small group / cell / ministry name (or Enter to skip)")
+            if _yes(_ask(t("church.add"))):
+                profile["church_name"]  = _ask(t("church.name"))
+                profile["church_group"] = _ask(t("church.group"))
 
     # ── Keywords & special dates ──────────────────────────────
-    print("\n[ KEYWORDS & SPECIAL DATES ]")
-    profile["keywords"] = _ask_multi("Keywords / topics of interest (hobbies, teams, idols...)")
-    profile["special_dates"] = _ask_multi("Special dates (anniversaries, events — any format)")
+    print(f"\n{t('section.keywords')}")
+    profile["keywords"] = _ask_multi(t("keywords.list"))
+    profile["special_dates"] = _ask_multi(t("keywords.special_dates"))
 
-    # ── Phrases & jargon (acrostic passwords) ─────────────────
-    print("\n[ PHRASES & JARGON ]")
-    print("  Each phrase → acrostic initials + mutations (e.g. _E+FpQTq@2026).")
-    print("  PT-BR: \"mais\" in a phrase becomes \"+\" in the initials string.")
-    profile["phrases"] = _ask_multi(
-        "Personal phrases / jargon / sayings (e.g. é melhor pedir do que tentar quebrar)"
-    )
+    # ── Phrases & jargon ─────────────────────────────────────
+    print(f"\n{t('section.phrases')}")
+    print(f"  {t('phrases.hint')}")
+    profile["phrases"] = _ask_multi(t("phrases.enter"))
+    if profile["phrases"]:
+        phrase_mode_raw = _ask(t("phrases.mode")).strip()
+        profile["phrase_mode"] = {"1": "acrostic", "2": "full", "3": "both"}.get(phrase_mode_raw, "both")
+        profile["phrase_prefixes"] = not _no(_ask(t("phrases.prefixes")))
+        profile["phrase_suffix_years"] = not _no(_ask(t("phrases.suffix_years")))
+    else:
+        profile["phrase_mode"] = "both"
+        profile["phrase_prefixes"] = True
+        profile["phrase_suffix_years"] = True
+
+    # ── Keyword mutations (optional) ──────────────────────────
+    print(f"\n{t('section.keyword_mutations')}")
+    print(t("mutations.hint"))
+    mutation_raw = _ask(t("mutations.ask"))
+    if _yes(mutation_raw):
+        sel = _ask(t("mutations.select")).strip()
+        modes = []
+        for part in sel.replace(",", " ").split():
+            if part == "1":
+                modes.append("letter_reverse")
+            elif part == "2":
+                modes.append("syllable_reverse")
+            elif part == "3":
+                modes.append("syllable_rotate")
+        profile["keyword_mutations"] = {
+            "enabled": True,
+            "modes": modes or ["letter_reverse", "syllable_reverse"],
+        }
+    else:
+        profile["keyword_mutations"] = {"enabled": False, "modes": []}
+
+    # ── Engine selection ──────────────────────────────────────
+    print(f"\n{t('section.engines')}")
+    try:
+        from wfh_modules.generation_engines import ask_engine_selection
+        engine_ids = ask_engine_selection(t_func=t)
+        if engine_ids:
+            profile["_engine_ids"] = sorted(engine_ids)
+    except ImportError:
+        pass
 
     # ── Generation options ────────────────────────────────────
-    print("\n[ GENERATION OPTIONS ]")
-    profile["leet_mode"] = _ask("Leet mode [none/basic/medium/aggressive] (default: basic)") or "basic"
-    profile["with_spaces"] = _ask("Include spaces between words? [y/N]").lower() in ("y", "yes")
-    profile["use_behavior_patterns"] = _ask(
-        "Include behavioral/religious patterns from knowledge base? [Y/n]"
-    ).lower() not in ("n", "no")
-    min_raw = _ask("Minimum password length (default: 6)")
-    max_raw = _ask("Maximum password length (default: 32, 0 = unlimited)")
+    print(f"\n{t('section.generation')}")
+    profile["leet_mode"] = _ask(t("gen.leet_mode")) or "basic"
+    profile["with_spaces"] = _yes(_ask(t("gen.with_spaces")))
+    profile["use_behavior_patterns"] = not _no(_ask(t("gen.behavior_patterns")))
+    min_raw = _ask(t("gen.min_len"))
+    max_raw = _ask(t("gen.max_len"))
     profile["min_len"] = int(min_raw) if min_raw.isdigit() else 6
     profile["max_len"] = int(max_raw) if max_raw.isdigit() and int(max_raw) > 0 else 32
-    profile["include_specials"] = _ask("Add special characters to combinations? [y/N]").lower() in ("y", "yes")
-    print("  Note: current/previous year suffixes (25, 2025, 26, 2026) are added automatically.")
-    profile["include_recent_years"] = _ask(
-        "Include rolling recent year tokens (current + previous year)? [Y/n]"
-    ).lower() not in ("n", "no")
+    profile["include_specials"] = _yes(_ask(t("gen.include_specials")))
+    profile["include_recent_years"] = not _no(_ask(t("gen.include_recent_years")))
     if profile.get("include_recent_years", True):
-        lb_raw = _ask("Recent years lookback (0=current only, 1=current+previous, default: 1)")
+        lb_raw = _ask(t("gen.recent_years_lookback"))
         profile["recent_years_lookback"] = int(lb_raw) if lb_raw.isdigit() else 1
     else:
         profile["recent_years_lookback"] = 0
 
-    # ── Output file ───────────────────────────────────────────
-    print("\n[ OUTPUT FILE ]")
-    default_out = default_profile_output_path(profile)
-    print(f"  Leave blank to use default: {default_out}")
-    print("  Enter a full path, or just a filename (saved under /tmp).")
-    out_raw = _ask("Output file path")
+    # ── Output finalization ────────────────────────────────────
+    print(f"\n{t('section.output')}")
+    try:
+        from wfh_modules.archive_export import ask_export_options
+        export_opts, out_raw = ask_export_options(t_func=t)
+        profile["_export_options"] = {
+            "sanitize": export_opts.sanitize,
+            "dedupe":   export_opts.dedupe,
+            "sort":     export_opts.sort,
+            "format":   export_opts.format.value,
+        }
+    except ImportError:
+        # archive_export not yet available — fall back to simple path prompt
+        out_raw = ""
+
+    if not out_raw:
+        default_out = default_profile_output_path(profile)
+        print(f"  Leave blank to use default: {default_out}")
+        out_raw = _ask(t("output.path"))
+
     profile["output_path"] = normalize_profile_output_path(out_raw, profile)
-    print(f"  → Will save to: {profile['output_path']}")
+    print(t("output.will_save", path=profile["output_path"]))
 
     profile["interactive_mode"] = True
 
@@ -2001,7 +2311,7 @@ def interactive_profile() -> dict:
 
 def _generate_from_behavior(
     profile: dict,
-    seen: set[str],
+    seen: "_SeenSet | set[str]",
     min_len: int,
     max_len: int,
 ) -> Generator[str, None, None]:
@@ -2238,6 +2548,14 @@ def generate_from_profile(
     effective_max = max_len if max_len > 0 else 9999
     effective_min = min_len
 
+    _active_raw = profile.get("_active_engines")
+    _active: set[int] | None = None
+    if _active_raw is not None:
+        _active = {int(x) for x in _active_raw}
+
+    def _eng(engine_id: int) -> bool:
+        return _active is None or engine_id in _active
+
     # Override from profile if present
     if profile.get("min_len"):
         effective_min = profile["min_len"]
@@ -2248,7 +2566,7 @@ def generate_from_profile(
     if profile.get("include_specials"):
         include_specials = profile["include_specials"]
 
-    seen: set[str] = set()
+    seen: _SeenSet = _SeenSet()
     word_tokens: list[str] = []
     all_date_tokens: list[str] = []
 
@@ -2291,22 +2609,35 @@ def generate_from_profile(
     if surname:
         add_words(surname)
 
+    # Maiden name (CUPP parity)
+    add_words(profile.get("maiden_name", ""))
+
     # Nicknames
     for nick in profile.get("nicknames", []):
         add_words(nick)
 
     # Birth date
-    day = profile.get("birth_day", 0) or 0
-    month = profile.get("birth_month", 0) or 0
-    year = profile.get("birth_year", 0) or 0
-    add_dates(day, month, year)
+    if _eng(2):
+        day = profile.get("birth_day", 0) or 0
+        month = profile.get("birth_month", 0) or 0
+        year = profile.get("birth_year", 0) or 0
+        add_dates(day, month, year)
 
-    # Zodiac
-    if day and month:
-        zodiac = get_zodiac(day, month)
-        add_words(zodiac)
-        if year:
-            add_words(get_chinese_zodiac(year))
+        # Zodiac
+        if day and month:
+            zodiac = get_zodiac(day, month)
+            add_words(zodiac)
+            if year:
+                add_words(get_chinese_zodiac(year))
+
+        # Birthstone tokens (month-based, CUPP parity extension)
+        if month:
+            for stone in get_birthstone_tokens(month):
+                add_words(stone)
+    else:
+        day = profile.get("birth_day", 0) or 0
+        month = profile.get("birth_month", 0) or 0
+        year = profile.get("birth_year", 0) or 0
 
     # National ID as token
     nid = profile.get("national_id", "").strip()
@@ -2317,12 +2648,14 @@ def generate_from_profile(
                 word_tokens.append(v)
 
     # Old passwords (elpscrk parity)
-    for oldpwd in profile.get("old_passwords", []):
-        if oldpwd and oldpwd not in word_tokens:
-            word_tokens.append(oldpwd)
-        rev = oldpwd[::-1]
-        if rev and rev != oldpwd and rev not in word_tokens:
-            word_tokens.append(rev)
+    if _eng(1) or _eng(9):
+        for oldpwd in profile.get("old_passwords", []):
+            if oldpwd and oldpwd not in word_tokens:
+                word_tokens.append(oldpwd)
+            if _eng(9):
+                rev = oldpwd[::-1]
+                if rev and rev != oldpwd and rev not in word_tokens:
+                    word_tokens.append(rev)
 
     # Phones + fragments (elpscrk parity)
     for phone in profile.get("phones", []):
@@ -2333,11 +2666,30 @@ def generate_from_profile(
             if frag not in word_tokens:
                 word_tokens.append(frag)
 
+    # T9 phone spelling from names (BEWGor parity)
+    try:
+        from wfh_modules.phone_gen import t9_wordlist_tokens
+        t9_names: list[str] = []
+        for field in ("full_name", "short_name", "partner_name", "company_name"):
+            for w in _split_words(profile.get(field, "")):
+                if w:
+                    t9_names.append(w)
+        for nick in profile.get("nicknames", []):
+            if nick:
+                t9_names.append(str(nick))
+        for tok in t9_wordlist_tokens(
+            t9_names[:12], include_encoded=True, include_decoded=False,
+        ):
+            if tok and tok not in word_tokens:
+                word_tokens.append(tok)
+    except ImportError:
+        pass
+
     # Location
     add_words(profile.get("location_city", ""))
     add_words(profile.get("location_state", ""))
     country_raw = (profile.get("location_country", "") or "").strip()
-    if country_raw:
+    if country_raw and _eng(24):
         from wfh_modules.country_tokens import (
             country_word_tokens,
             country_minimal_tokens,
@@ -2357,20 +2709,22 @@ def generate_from_profile(
     # Partner
     add_words(profile.get("partner_name", ""))
     add_words(profile.get("partner_nick", ""))
-    add_dates(
-        profile.get("partner_birth_day", 0) or 0,
-        profile.get("partner_birth_month", 0) or 0,
-        profile.get("partner_birth_year", 0) or 0,
-    )
+    if _eng(2):
+        add_dates(
+            profile.get("partner_birth_day", 0) or 0,
+            profile.get("partner_birth_month", 0) or 0,
+            profile.get("partner_birth_year", 0) or 0,
+        )
 
     # Children
     for child in profile.get("children", []):
         add_words(child.get("name", ""))
-        add_dates(
-            child.get("birth_day", 0) or 0,
-            child.get("birth_month", 0) or 0,
-            child.get("birth_year", 0) or 0,
-        )
+        if _eng(2):
+            add_dates(
+                child.get("birth_day", 0) or 0,
+                child.get("birth_month", 0) or 0,
+                child.get("birth_year", 0) or 0,
+            )
 
     # Pets
     pet_names, _ = _normalize_pet_entries(profile.get("pets") or [])
@@ -2378,21 +2732,22 @@ def generate_from_profile(
         add_words(pet)
 
     # Corporate
-    add_words(profile.get("company_name", ""))
-    add_words(profile.get("company_legal", ""))
-    dept = profile.get("company_department", "") or ""
-    if dept:
-        add_words(dept)
-        add_abbreviations(dept)
-    email = profile.get("company_email", "")
-    if email:
-        word_tokens.append(email)
-        local = email.split("@")[0]
-        if local:
-            add_words(local)
-    domain = profile.get("company_domain", "").replace("https://", "").replace("http://", "")
-    if domain:
-        add_words(domain.split(".")[0])
+    if _eng(25):
+        add_words(profile.get("company_name", ""))
+        add_words(profile.get("company_legal", ""))
+        dept = profile.get("company_department", "") or ""
+        if dept:
+            add_words(dept)
+            add_abbreviations(dept)
+        email = profile.get("company_email", "")
+        if email:
+            word_tokens.append(email)
+            local = email.split("@")[0]
+            if local:
+                add_words(local)
+        domain = profile.get("company_domain", "").replace("https://", "").replace("http://", "")
+        if domain:
+            add_words(domain.split(".")[0])
 
     # Social handles
     for handle in profile.get("social_handles", []):
@@ -2406,10 +2761,11 @@ def generate_from_profile(
         add_abbreviations(kw)
 
     # Corporate acronyms from company name
-    for corp_field in ("company_name", "company_legal", "company_department"):
-        corp_val = profile.get(corp_field, "")
-        if corp_val:
-            add_abbreviations(corp_val)
+    if _eng(25):
+        for corp_field in ("company_name", "company_legal", "company_department"):
+            corp_val = profile.get(corp_field, "")
+            if corp_val:
+                add_abbreviations(corp_val)
 
     # Religion tokens (church/group names as word tokens)
     church = (profile.get("church_name") or "").strip()
@@ -2423,50 +2779,50 @@ def generate_from_profile(
         add_words(rel_custom)
 
     # Special dates
-    for sd in profile.get("special_dates", []):
-        parsed = parse_date_input(sd)
-        if parsed:
-            add_dates(*parsed)
-        else:
-            clean_sd = re.sub(r"\D", "", sd)
-            if clean_sd and clean_sd not in all_date_tokens:
-                all_date_tokens.append(clean_sd)
+    if _eng(2):
+        for sd in profile.get("special_dates", []):
+            parsed = parse_date_input(sd)
+            if parsed:
+                add_dates(*parsed)
+            else:
+                clean_sd = re.sub(r"\D", "", sd)
+                if clean_sd and clean_sd not in all_date_tokens:
+                    all_date_tokens.append(clean_sd)
 
-    # ── Rolling recent years (current + previous): 25, 2025, 26, 2026 ──
-    if profile.get("include_recent_years", True):
-        lookback = int(profile.get("recent_years_lookback", 1))
-        for yt in rolling_recent_year_tokens(lookback):
-            if yt not in all_date_tokens:
-                all_date_tokens.append(yt)
+        # ── Rolling recent years (current + previous): 25, 2025, 26, 2026 ──
+        if profile.get("include_recent_years", True):
+            lookback = int(profile.get("recent_years_lookback", 1))
+            for yt in rolling_recent_year_tokens(lookback):
+                if yt not in all_date_tokens:
+                    all_date_tokens.append(yt)
 
-    # ── Year range tokens (--year-start / --year-end) ─────────
-    y_start = profile.get("year_start")
-    y_end = profile.get("year_end")
-    if y_start and y_end:
-        for yt in generate_year_range_tokens(int(y_start), int(y_end)):
-            if yt not in all_date_tokens:
-                all_date_tokens.append(yt)
+        # ── Year range tokens (--year-start / --year-end) ─────────
+        y_start = profile.get("year_start")
+        y_end = profile.get("year_end")
+        if y_start and y_end:
+            for yt in generate_year_range_tokens(int(y_start), int(y_end)):
+                if yt not in all_date_tokens:
+                    all_date_tokens.append(yt)
 
-    # ── Suffix range tokens (--suffix-range) ──────────────────
-    sr_start = profile.get("suffix_range_start")
-    sr_end = profile.get("suffix_range_end")
-    if sr_start is not None and sr_end is not None:
-        zero_pad = int(profile.get("suffix_range_zero_pad", 0))
-        for st in generate_suffix_range_tokens(int(sr_start), int(sr_end), zero_pad):
-            # Add as date-like suffixes to combine with word_tokens
-            if st not in all_date_tokens:
-                all_date_tokens.append(st)
+        # ── Suffix range tokens (--suffix-range) ──────────────────
+        sr_start = profile.get("suffix_range_start")
+        sr_end = profile.get("suffix_range_end")
+        if sr_start is not None and sr_end is not None:
+            zero_pad = int(profile.get("suffix_range_zero_pad", 0))
+            for st in generate_suffix_range_tokens(int(sr_start), int(sr_end), zero_pad):
+                if st not in all_date_tokens:
+                    all_date_tokens.append(st)
 
-    # Extra date fragments (CUPP-style granular: isolated day, month, year digits)
-    for date_src in [
-        (day, month, year),
-        (profile.get("partner_birth_day", 0) or 0,
-         profile.get("partner_birth_month", 0) or 0,
-         profile.get("partner_birth_year", 0) or 0),
-    ]:
-        for frag in _extra_date_fragments(*date_src):
-            if frag not in all_date_tokens:
-                all_date_tokens.append(frag)
+        # Extra date fragments (CUPP-style granular: isolated day, month, year digits)
+        for date_src in [
+            (day, month, year),
+            (profile.get("partner_birth_day", 0) or 0,
+             profile.get("partner_birth_month", 0) or 0,
+             profile.get("partner_birth_year", 0) or 0),
+        ]:
+            for frag in _extra_date_fragments(*date_src):
+                if frag not in all_date_tokens:
+                    all_date_tokens.append(frag)
 
     # Parents and siblings (BEWGor parity)
     for parent in profile.get("parents", []):
@@ -2486,31 +2842,153 @@ def generate_from_profile(
         seps.extend(["&", "*", "(", ")", "+", "=", "~"])
 
     # Token + year suffixes (OzzY25, Name2026, ...)
-    word_tokens = list(dict.fromkeys(
-        word_tokens + _append_year_suffix_tokens(word_tokens, all_date_tokens)
-    ))
+    if _eng(2):
+        word_tokens = list(dict.fromkeys(
+            word_tokens + _append_year_suffix_tokens(word_tokens, all_date_tokens)
+        ))
+
+    # ── CUPP bdss: cartesian date fragment combos ─────────────
+    if _eng(8):
+        for _combo in _date_fragment_combos(all_date_tokens):
+            if _combo not in seen:
+                seen.add(_combo)
+                if effective_min <= len(_combo) <= effective_max:
+                    yield _combo
 
     # ── Emit all token combinations ───────────────────────────
-    yield from _emit_all(
-        word_tokens, all_date_tokens,
-        seps, effective_min, effective_max,
-        with_spaces, seen, depth=depth,
-    )
+    if _eng(3):
+        yield from _emit_all(
+            word_tokens, all_date_tokens,
+            seps, effective_min, effective_max,
+            with_spaces, seen, depth=depth,
+        )
 
     # ── Relationship combos (_NOME@2026#Pet, name↔corp, pet↔dates, …) ──
-    yield from _emit_profile_relationship_combos(
-        profile, all_date_tokens, effective_min, effective_max, seen,
-        include_specials=include_specials,
-        with_spaces=with_spaces,
-    )
+    if _eng(4):
+        yield from _emit_profile_relationship_combos(
+            profile, all_date_tokens, effective_min, effective_max, seen,
+            include_specials=include_specials,
+            with_spaces=with_spaces,
+        )
 
     # ── Phrase/jargon acrostics (_E+FpQTq@2026, …) ────────────
-    yield from _emit_phrase_initials_combos(
-        profile, effective_min, effective_max, seen,
-    )
+    phrase_opts = profile.get("phrase_options") or {}
+    phrase_mode = profile.get("phrase_mode") or phrase_opts.get("mode", "both")
+    if _eng(5) and phrase_mode in ("acrostic", "both"):
+        yield from _emit_phrase_initials_combos(
+            profile, effective_min, effective_max, seen,
+        )
+
+    # ── Full phrase combos (no acrostic) ───────────────────────
+    if _eng(6) and phrase_mode in ("full", "both"):
+        yield from _emit_phrase_full_combos(
+            profile, effective_min, effective_max, seen,
+            do_leet=do_leet,
+            leet_mode=use_leet,
+        )
 
     # ── Behavioral/religious patterns from JSON DB ────────────
-    if profile.get("use_behavior_patterns", True):
+    if _eng(7) and profile.get("use_behavior_patterns", True):
         yield from _generate_from_behavior(
             profile, seen, effective_min, effective_max,
         )
+
+
+def improve_wordlist(
+    source_path: str,
+    output_path: str,
+    leet_mode: str = "basic",
+    append_years: bool = True,
+    append_specials: bool = True,
+    year_start: int = 2020,
+    year_end: int = 2027,
+    special_chars: list[str] | None = None,
+    min_len: int = 6,
+    max_len: int = 32,
+) -> int:
+    """Enrich an existing wordlist with mutations (CUPP -w parity).
+
+    Reads each word from *source_path* and generates:
+
+    - leet variants (via :func:`_word_variants` with leet=True)
+    - word + year combos (year_start..year_end)
+    - word + special char combos
+    - 1-3 char special suffix combos
+
+    Writes deduplicated output to *output_path*.
+
+    Args:
+        source_path: Path to input wordlist (one entry per line).
+        output_path: Path to write enriched output.
+        leet_mode: Leet substitution intensity ('basic', 'medium', 'aggressive').
+        append_years: Append year suffixes to each base word.
+        append_specials: Append special char suffixes to each base word.
+        year_start: First year for year suffix range.
+        year_end: Last year for year suffix range (inclusive).
+        special_chars: Override special char list. Defaults to COMMON_SUFFIXES.
+        min_len: Minimum entry length to include in output.
+        max_len: Maximum entry length to include in output.
+
+    Returns:
+        Count of entries written to *output_path*.
+    """
+    if special_chars is None:
+        special_chars = list(COMMON_SUFFIXES)
+
+    years = [str(y) for y in range(year_start, year_end + 1)]
+    two_digit_years = [y[-2:] for y in years]
+    all_years = list(dict.fromkeys(years + two_digit_years))
+
+    seen: _SeenSet = _SeenSet()
+    out_path = Path(output_path)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    written = 0
+    with open(source_path, "r", encoding="utf-8", errors="ignore") as src, \
+            open(out_path, "w", encoding="utf-8") as dst:
+
+        for raw_line in src:
+            base = raw_line.rstrip("\n\r")
+            if not base:
+                continue
+
+            candidates: list[str] = []
+
+            # Base word + leet variants
+            for variant in _word_variants(base, leet=True, leet_mode=leet_mode):
+                candidates.append(variant)
+
+            # Word + year combos
+            if append_years:
+                for word in list(candidates):
+                    for yr in all_years:
+                        candidates.append(f"{word}{yr}")
+                        candidates.append(f"{yr}{word}")
+
+            # Word + special char combos (1-char suffix)
+            if append_specials:
+                for word in list(candidates):
+                    for sp in special_chars:
+                        candidates.append(f"{word}{sp}")
+
+            # 1-3 char special suffix combos
+            if append_specials:
+                for word in list(candidates):
+                    for sp1 in ["!", "@", "#", "$", "_", "."]:
+                        for sp2 in ["", "1", "12", "123"]:
+                            combo = f"{word}{sp1}{sp2}"
+                            if combo not in candidates:
+                                candidates.append(combo)
+
+            for entry in candidates:
+                if not entry:
+                    continue
+                if not (min_len <= len(entry) <= max_len):
+                    continue
+                if entry in seen:
+                    continue
+                seen.add(entry)
+                dst.write(entry + "\n")
+                written += 1
+
+    return written

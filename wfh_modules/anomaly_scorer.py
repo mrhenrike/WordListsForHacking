@@ -308,6 +308,170 @@ def score_passwords(passwords: Sequence[str]) -> List[Tuple[str, float]]:
     return list(zip(passwords, ensemble))
 
 
+def deleet(password: str, aggressive: bool = False) -> str:
+    """Reverse common leet-speak substitutions to recover a base word.
+
+    Implements the de-leet step from DeMangler to find the original word
+    that a password was derived from, useful for policy checking and base-word
+    analysis.
+
+    Args:
+        password: Password string to de-leet.
+        aggressive: If True, apply a broader set of substitutions (may
+            introduce false positives on non-leet passwords).
+
+    Returns:
+        De-leeted string (lowercase).
+    """
+    basic: dict[str, str] = {
+        "0": "o", "1": "i", "3": "e", "4": "a", "5": "s",
+        "7": "t", "@": "a", "$": "s", "!": "i",
+    }
+    extended: dict[str, str] = {
+        **basic,
+        "8": "b", "6": "g", "9": "g", "+": "t", "|": "i",
+        "()": "o", "[]": "o", "{": "c", "<": "c", ">": "d",
+    }
+    table = extended if aggressive else basic
+    result = password.lower()
+    for leet, plain in table.items():
+        result = result.replace(leet, plain)
+    return result
+
+
+def policy_check(password: str) -> dict:
+    """Check password compliance against common policy rules.
+
+    Implements Windows-complexity-style and OWASP checks, similar to
+    DeMangler's RubyEntropy policy checks. Useful for filtering generated
+    candidates by policy class or scoring by policy-compliance likelihood.
+
+    Args:
+        password: Password to evaluate.
+
+    Returns:
+        Dict with:
+          - length: int
+          - has_lower, has_upper, has_digit, has_special: bool
+          - windows_complexity: bool (3-of-4 rule, len >= 8)
+          - owasp_basic: bool (len >= 8, lower+upper+digit or special)
+          - owasp_strong: bool (len >= 12, all 4 classes)
+          - keyboard_walk: bool (3+ consecutive QWERTY adjacent chars)
+          - repeated_chars: bool (3+ same char in a row)
+          - common_suffix: bool (ends with 1-4 digits)
+          - entropy: float (Shannon entropy in bits)
+          - base_word: str (de-leeted lowercase version)
+    """
+    n = len(password)
+    has_lower = any(c.islower() for c in password)
+    has_upper = any(c.isupper() for c in password)
+    has_digit = any(c.isdigit() for c in password)
+    has_special = any(not c.isalnum() for c in password)
+
+    classes_met = sum([has_lower, has_upper, has_digit, has_special])
+    windows_complexity = n >= 8 and classes_met >= 3
+    owasp_basic = n >= 8 and classes_met >= 3
+    owasp_strong = n >= 12 and classes_met >= 4
+
+    # Keyboard walk detection (QWERTY)
+    adj_run = 1
+    keyboard_walk = False
+    for i in range(1, n):
+        a, b = password[i - 1].lower(), password[i].lower()
+        if b in _QWERTY_ADJ.get(a, ""):
+            adj_run += 1
+            if adj_run >= 3:
+                keyboard_walk = True
+                break
+        else:
+            adj_run = 1
+
+    # Repeated chars
+    rep_run = 1
+    repeated_chars = False
+    for i in range(1, n):
+        if password[i] == password[i - 1]:
+            rep_run += 1
+            if rep_run >= 3:
+                repeated_chars = True
+                break
+        else:
+            rep_run = 1
+
+    # Common numeric suffix (e.g. password123, user2024)
+    import re as _re
+    common_suffix = bool(_re.search(r"\d{1,4}$", password))
+
+    # Shannon entropy
+    freq: dict[str, int] = {}
+    for c in password:
+        freq[c] = freq.get(c, 0) + 1
+    entropy = 0.0
+    if n > 0:
+        entropy = -sum((v / n) * math.log2(v / n) for v in freq.values())
+
+    return {
+        "length": n,
+        "has_lower": has_lower,
+        "has_upper": has_upper,
+        "has_digit": has_digit,
+        "has_special": has_special,
+        "windows_complexity": windows_complexity,
+        "owasp_basic": owasp_basic,
+        "owasp_strong": owasp_strong,
+        "keyboard_walk": keyboard_walk,
+        "repeated_chars": repeated_chars,
+        "common_suffix": common_suffix,
+        "entropy": round(entropy, 4),
+        "base_word": deleet(password),
+    }
+
+
+def filter_by_policy(
+    passwords: List[str],
+    require_windows: bool = False,
+    require_owasp_basic: bool = False,
+    require_owasp_strong: bool = False,
+    min_entropy: float = 0.0,
+    exclude_keyboard_walk: bool = False,
+    exclude_repeated: bool = False,
+) -> List[str]:
+    """Filter a list of passwords by policy compliance.
+
+    Useful for reducing a generated wordlist to only candidates likely to
+    pass enterprise password policies, increasing attack efficiency.
+
+    Args:
+        passwords: List of password strings to filter.
+        require_windows: Keep only Windows-complexity-compliant entries.
+        require_owasp_basic: Keep only OWASP basic-compliant entries.
+        require_owasp_strong: Keep only OWASP strong-compliant entries.
+        min_entropy: Minimum Shannon entropy in bits (0 = no filter).
+        exclude_keyboard_walk: Remove passwords with keyboard-walk patterns.
+        exclude_repeated: Remove passwords with 3+ repeated consecutive chars.
+
+    Returns:
+        Filtered list preserving original order.
+    """
+    result: List[str] = []
+    for pw in passwords:
+        p = policy_check(pw)
+        if require_windows and not p["windows_complexity"]:
+            continue
+        if require_owasp_basic and not p["owasp_basic"]:
+            continue
+        if require_owasp_strong and not p["owasp_strong"]:
+            continue
+        if min_entropy > 0 and p["entropy"] < min_entropy:
+            continue
+        if exclude_keyboard_walk and p["keyboard_walk"]:
+            continue
+        if exclude_repeated and p["repeated_chars"]:
+            continue
+        result.append(pw)
+    return result
+
+
 def score_wordlist(
     path: str,
     top_n: int = 0,

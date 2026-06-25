@@ -204,3 +204,33 @@ class TargetSpider:
         words = self.crawl(url, depth=depth)
         Path(output_path).write_text("\n".join(words), encoding="utf-8")
         return len(words)
+
+
+def spider_words(
+    url: str,
+    min_len: int = 4,
+    max_words: int = 500,
+    depth: int = 2,
+    delay_sec: float = 0.5,
+) -> List[str]:
+    """Crawl *url* and return up to *max_words* unique words (cewl_mut helper).
+
+    Args:
+        url: Starting URL.
+        min_len: Minimum word length.
+        max_words: Cap on returned words (0 = unlimited).
+        depth: Crawl depth passed to :class:`TargetSpider`.
+        delay_sec: Delay between HTTP requests.
+
+    Returns:
+        List of unique words (sorted), at most *max_words* when max_words > 0.
+    """
+    spider = TargetSpider(
+        min_len=min_len,
+        delay_sec=delay_sec,
+        max_pages=max(10, max_words // 10) if max_words else 30,
+    )
+    words = spider.crawl(url, depth=depth)
+    if max_words and len(words) > max_words:
+        return words[:max_words]
+    return words

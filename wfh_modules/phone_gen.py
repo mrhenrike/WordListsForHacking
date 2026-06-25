@@ -360,3 +360,126 @@ def interactive_phone_wizard() -> dict:
         "custom_pattern": custom_pat,
         "output_formats": formats,
     }
+
+
+# ── BEWGor T9 spelling (native port) ──────────────────────────────────────────
+
+# Standard T9/ITU-T E.161 keypad layout
+_T9_MAP: dict[str, str] = {
+    "a": "2", "b": "2", "c": "2",
+    "d": "3", "e": "3", "f": "3",
+    "g": "4", "h": "4", "i": "4",
+    "j": "5", "k": "5", "l": "5",
+    "m": "6", "n": "6", "o": "6",
+    "p": "7", "q": "7", "r": "7", "s": "7",
+    "t": "8", "u": "8", "v": "8",
+    "w": "9", "x": "9", "y": "9", "z": "9",
+    " ": "0",
+}
+
+# Reverse map: digit -> list of letters (first letter of each trio/quad)
+_T9_REVERSE: dict[str, list[str]] = {
+    "2": ["a", "b", "c"],
+    "3": ["d", "e", "f"],
+    "4": ["g", "h", "i"],
+    "5": ["j", "k", "l"],
+    "6": ["m", "n", "o"],
+    "7": ["p", "q", "r", "s"],
+    "8": ["t", "u", "v"],
+    "9": ["w", "x", "y", "z"],
+    "0": [" "],
+}
+
+
+def t9_encode(word: str) -> str:
+    """Encode a word to its T9 digit representation (BEWGor parity).
+
+    Maps each letter to the corresponding phone keypad digit.
+    Non-alpha characters are preserved as-is.
+
+    Args:
+        word: Input word (name, keyword, etc.).
+
+    Returns:
+        T9 digit string (e.g. "andre" -> "26337").
+    """
+    return "".join(_T9_MAP.get(ch.lower(), ch) for ch in word)
+
+
+def t9_decode_variants(t9_digits: str, max_variants: int = 256) -> list[str]:
+    """Decode T9 digit string to possible words (all combinations).
+
+    Uses cartesian product of each digit's letter alternatives. Caps the
+    number of generated variants to ``max_variants`` to avoid combinatorial
+    explosion.
+
+    Args:
+        t9_digits: Digit sequence (e.g. "26337").
+        max_variants: Maximum number of word candidates to return.
+
+    Returns:
+        List of possible word spellings.
+    """
+    import itertools
+
+    pools: list[list[str]] = []
+    for ch in t9_digits:
+        candidates = _T9_REVERSE.get(ch)
+        if candidates:
+            pools.append(candidates)
+        elif ch.isdigit():
+            pools.append([ch])
+        else:
+            pools.append([ch])
+
+    if not pools:
+        return []
+
+    results: list[str] = []
+    for combo in itertools.product(*pools):
+        results.append("".join(combo))
+        if len(results) >= max_variants:
+            break
+    return results
+
+
+def t9_wordlist_tokens(
+    words: list[str],
+    include_encoded: bool = True,
+    include_decoded: bool = False,
+    max_decode_variants: int = 64,
+) -> list[str]:
+    """Generate T9-based wordlist tokens from a list of base words (BEWGor parity).
+
+    For each word:
+    - Optionally adds its T9 encoding (digits)
+    - Optionally adds reverse-decoded variants from the encoding
+
+    Typical usage: feed name tokens for phone-number-as-password patterns.
+
+    Args:
+        words: Base word list (names, keywords, etc.).
+        include_encoded: Add the T9 digit encoding of each word.
+        include_decoded: Add reverse-decoded word variants.
+        max_decode_variants: Cap per-word decode variants.
+
+    Returns:
+        Deduplicated list of T9-related tokens.
+    """
+    seen: set[str] = set()
+    results: list[str] = []
+
+    for word in words:
+        if not word.strip():
+            continue
+        encoded = t9_encode(word.strip())
+        if include_encoded and encoded not in seen:
+            seen.add(encoded)
+            results.append(encoded)
+        if include_decoded:
+            for variant in t9_decode_variants(encoded, max_decode_variants):
+                if variant not in seen:
+                    seen.add(variant)
+                    results.append(variant)
+
+    return results

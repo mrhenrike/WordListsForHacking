@@ -612,3 +612,218 @@ def format_mask_report(mask_data: dict) -> str:
         lines.append(f"  {i:3d}. {mask}  ({count:,}x)")
     lines.append("=" * 60)
     return "\n".join(lines)
+
+
+# ── PACK-compatible maskgen (optindex + time-budget) ──────────────────────────
+
+# Charset size per hashcat token (used for complexity calculation)
+_MASK_TOKEN_SIZE: dict[str, int] = {
+    "?l": 26,
+    "?u": 26,
+    "?d": 10,
+    "?s": 33,
+    "?a": 95,
+}
+
+# Default PPS benchmarks for common hardware (passwords per second, MD5-equiv)
+# User should pass their actual PPS from hashcat --benchmark output.
+_DEFAULT_PPS: dict[str, int] = {
+    "cpu":         5_000_000,      # ~5M/s on a modern 8-core CPU
+    "gpu_nvidia":  8_000_000_000,  # ~8G/s RTX 3090 class, MD5
+    "gpu_amd":     6_000_000_000,  # ~6G/s RX 6900 XT class, MD5
+}
+
+
+def _mask_complexity(mask: str) -> int:
+    """Compute keyspace (complexity) of a hashcat mask string."""
+    i = 0
+    complexity = 1
+    while i < len(mask):
+        if mask[i] == "?" and i + 1 < len(mask):
+            token = mask[i:i + 2]
+            complexity *= _MASK_TOKEN_SIZE.get(token, 95)
+            i += 2
+        else:
+            i += 1
+    return complexity
+
+
+def maskgen_optindex(
+    mask_data: dict,
+    pps: int = 0,
+    target_time_hrs: float = 1.0,
+    use_gpu: bool = False,
+    gpu_type: str = "gpu_nvidia",
+    min_occurrence: int = 1,
+    max_complexity: int = 0,
+    hide_rare_pct: float = 0.0,
+) -> list[dict]:
+    """Rank masks by PACK optindex (coverage / crack cost) with time-budget.
+
+    Implements the PACK maskgen optindex ranking: masks with high occurrence
+    and low complexity score highest, enabling an ordered attack plan that
+    maximises coverage within a given time budget.
+
+    GPU usage is optional. Pass ``use_gpu=True`` and the appropriate
+    ``gpu_type`` ('gpu_nvidia' or 'gpu_amd'), or provide your own measured
+    ``pps`` from hashcat --benchmark. If running inside a VM, CUDA passthrough
+    is required for GPU mode to reflect real throughput.
+
+    Args:
+        mask_data: Dict returned by ``analyze_masks()``. Must contain
+            ``mask_frequency`` (mask→count) and ``top_masks``.
+        pps: Passwords per second for crack time estimation. 0 = auto-select
+            based on ``use_gpu`` / ``gpu_type``.
+        target_time_hrs: Stop including masks when cumulative crack time exceeds
+            this budget (hours). 0 = no limit.
+        use_gpu: If True and pps=0, use GPU benchmark constant for the given
+            ``gpu_type``. If False, use CPU constant.
+        gpu_type: Which GPU constant to use when use_gpu=True and pps=0.
+            One of 'gpu_nvidia', 'gpu_amd'.
+        min_occurrence: Skip masks seen fewer than this many times.
+        max_complexity: Skip masks with keyspace above this value. 0 = no limit.
+        hide_rare_pct: Skip masks whose percentage is below this threshold
+            (e.g. 0.5 = hide masks below 0.5% occurrence).
+
+    Returns:
+        List of dicts sorted descending by optindex, each containing:
+        mask, occurrence, occurrence_pct, complexity, optindex,
+        crack_time_secs, crack_time_fmt, cumulative_pct, within_budget.
+    """
+    freq: dict[str, int] = mask_data.get("mask_frequency", {})
+    if not freq:
+        freq = {m: c for m, c in mask_data.get("top_masks", [])}
+
+    total_count = sum(freq.values()) or 1
+
+    if pps == 0:
+        if use_gpu:
+            pps = _DEFAULT_PPS.get(gpu_type, _DEFAULT_PPS["gpu_nvidia"])
+        else:
+            pps = _DEFAULT_PPS["cpu"]
+
+    budget_secs = target_time_hrs * 3600.0 if target_time_hrs > 0 else float("inf")
+
+    ranked: list[dict] = []
+    for mask, count in freq.items():
+        if count < min_occurrence:
+            continue
+        occ_pct = count / total_count * 100
+        if hide_rare_pct > 0 and occ_pct < hide_rare_pct:
+            continue
+        complexity = _mask_complexity(mask)
+        if max_complexity > 0 and complexity > max_complexity:
+            continue
+        if complexity == 0:
+            optidx = 0.0
+        else:
+            optidx = 1.0 - complexity / (count + 1)
+        crack_time = complexity / pps if pps > 0 else float("inf")
+        ranked.append({
+            "mask": mask,
+            "occurrence": count,
+            "occurrence_pct": round(occ_pct, 4),
+            "complexity": complexity,
+            "optindex": round(optidx, 6),
+            "crack_time_secs": round(crack_time, 4),
+        })
+
+    ranked.sort(key=lambda x: x["optindex"], reverse=True)
+
+    cumulative_pct = 0.0
+    cumulative_time = 0.0
+    for entry in ranked:
+        cumulative_pct += entry["occurrence_pct"]
+        cumulative_time += entry["crack_time_secs"]
+        entry["cumulative_pct"] = round(cumulative_pct, 2)
+        entry["cumulative_time_secs"] = round(cumulative_time, 4)
+        entry["within_budget"] = cumulative_time <= budget_secs
+
+    return ranked
+
+
+def export_masks_csv_pack(
+    mask_optindex: list[dict],
+    filepath: Optional[str] = None,
+) -> str:
+    """Export maskgen_optindex result as PACK-compatible CSV.
+
+    Produces a CSV with the same columns as PACK's maskgen output, suitable
+    for direct use with ``hashcat -a 3 --keyspace`` or attack orchestration.
+
+    Args:
+        mask_optindex: List returned by ``maskgen_optindex()``.
+        filepath: Optional path to write the CSV. If None, returns the string.
+
+    Returns:
+        CSV string.
+    """
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow([
+        "mask", "occurrence", "occurrence_pct",
+        "complexity", "optindex",
+        "crack_time_secs", "cumulative_pct", "cumulative_time_secs", "within_budget",
+    ])
+    for entry in mask_optindex:
+        writer.writerow([
+            entry["mask"],
+            entry["occurrence"],
+            entry["occurrence_pct"],
+            entry["complexity"],
+            entry["optindex"],
+            entry["crack_time_secs"],
+            entry.get("cumulative_pct", ""),
+            entry.get("cumulative_time_secs", ""),
+            entry.get("within_budget", ""),
+        ])
+    csv_str = buf.getvalue()
+
+    if filepath:
+        out = Path(filepath)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(csv_str, encoding="utf-8")
+
+    return csv_str
+
+
+def format_maskgen_report(
+    mask_optindex: list[dict],
+    top_n: int = 20,
+    show_budget_only: bool = False,
+) -> str:
+    """Format maskgen_optindex result as a human-readable report.
+
+    Args:
+        mask_optindex: List returned by ``maskgen_optindex()``.
+        top_n: Maximum rows to show.
+        show_budget_only: If True, show only masks within the time budget.
+
+    Returns:
+        Formatted text report.
+    """
+    filtered = [e for e in mask_optindex if not show_budget_only or e.get("within_budget")][:top_n]
+    lines = [
+        "=" * 70,
+        "  PACK maskgen — Optindex Ranking",
+        "=" * 70,
+        f"  {'#':<4} {'Mask':<30} {'Occ%':>6} {'Optidx':>9} {'CrackT':>10} {'CumPct':>7}",
+        "  " + "-" * 66,
+    ]
+    for i, e in enumerate(filtered, 1):
+        crack_s = e["crack_time_secs"]
+        if crack_s < 1:
+            crack_fmt = f"{crack_s*1000:.1f}ms"
+        elif crack_s < 3600:
+            crack_fmt = f"{crack_s:.1f}s"
+        elif crack_s < 86400:
+            crack_fmt = f"{crack_s/3600:.1f}h"
+        else:
+            crack_fmt = f"{crack_s/86400:.1f}d"
+        budget_mark = "" if e.get("within_budget", True) else " X"
+        lines.append(
+            f"  {i:<4} {e['mask']:<30} {e['occurrence_pct']:>5.2f}%"
+            f" {e['optindex']:>9.4f} {crack_fmt:>10} {e.get('cumulative_pct',0):>6.1f}%{budget_mark}"
+        )
+    lines += ["", "=" * 70]
+    return "\n".join(lines)

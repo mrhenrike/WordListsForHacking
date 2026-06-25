@@ -583,13 +583,21 @@ def cmd_pattern(args: argparse.Namespace) -> None:
 
 def cmd_profile(args: argparse.Namespace) -> None:
     """Handler for personal profiling mode."""
-    from wfh_modules.profiler import interactive_profile, generate_from_profile, resolve_profile_output
+    from wfh_modules.profiler import interactive_profile, resolve_profile_output
+
+    # ── Resolve locale: CLI --lang > YAML locale > session default ────────────
+    from wfh_modules.i18n import set_session_locale as _set_locale
+    _cli_lang = getattr(args, "lang", None)
+    if _cli_lang:
+        _set_locale(_cli_lang)
 
     # ── Load from YAML file ──────────────────────────────────────────────────
     if getattr(args, "profile_file", None):
         from wfh_modules.profiler import load_profile_yaml
         try:
             profile = load_profile_yaml(args.profile_file)
+            if not _cli_lang and profile.get("locale"):
+                _set_locale(profile["locale"])
             _info(f"Profile loaded from: {args.profile_file}")
         except (FileNotFoundError, ImportError) as exc:
             _err(str(exc))
@@ -638,7 +646,7 @@ def cmd_profile(args: argparse.Namespace) -> None:
         except (ValueError, IndexError):
             _warn(f"Invalid --suffix-range format '{args.suffix_range}', expected START-END (e.g. 00-99)")
 
-    # Inject CUPP/elpscrk/BEWGor fields from CLI
+    # ── Inject CUPP/elpscrk/BEWGor fields from CLI ──────────────────────────
     if getattr(args, "surname", None):
         profile["surname"] = args.surname
     if getattr(args, "old_passwords", None):
@@ -650,32 +658,97 @@ def cmd_profile(args: argparse.Namespace) -> None:
     if getattr(args, "siblings", None):
         profile["siblings"] = args.siblings
 
+    # ── Inject engine/pipeline flags from CLI ───────────────────────────────
+    _cli_engines = getattr(args, "engines", None)
+    if _cli_engines:
+        profile["engines"] = _cli_engines
+    elif profile.get("_engine_ids"):
+        # Promote interactive wizard selection to pipeline-compatible format
+        profile["engines"] = ",".join(str(i) for i in profile["_engine_ids"])
+
+    _max_cand = getattr(args, "max_candidates", 0)
+    if _max_cand:
+        profile["max_candidates"] = _max_cand
+    _timeout = getattr(args, "timeout_secs", 0.0)
+    if _timeout:
+        profile["timeout_secs"] = _timeout
+
     leet_mode = getattr(args, "leet", "basic") or profile.get("leet_mode", "basic")
+    profile["leet_mode"] = leet_mode
+
     output = resolve_profile_output(getattr(args, "output", None), profile)
 
-    if output:
-        preview = _profile_preview_and_confirm(profile, leet_mode, output)
-        if preview is None:
-            return
-        est_count, avg_len = preview
-        _info(f"Generating wordlist from profile [leet={leet_mode}]...")
-        gen = generate_from_profile(profile, leet_mode=leet_mode)
-        count = _write_output(
-            gen, output,
-            estimate=est_count,
-            min_len=int(profile.get("min_len", 0) or 0),
-            max_len=int(profile.get("max_len", 0) or 0),
-            avg_entry_len=max(1, int(avg_len)),
-        )
-        if count:
-            _ok(f"Generated: {count:,} entries → {output}")
+    # ── Pipeline execution ───────────────────────────────────────────────────
+    try:
+        from wfh_modules.pipeline_engine import run_profile_pipeline, ProfilePipeline, PipelineConfig
+        _use_pipeline = True
+    except ImportError:
+        _use_pipeline = False
+
+    if _use_pipeline:
+        if output:
+            profile["output_path"] = output
+            # Quick preview using legacy generator before the heavy pipeline runs
+            _preview_ok = True
+            if profile.get("interactive_mode"):
+                from wfh_modules.profiler import generate_from_profile
+                preview = _profile_preview_and_confirm(profile, leet_mode, output)
+                if preview is None:
+                    return
+            _info(f"Running generation pipeline [leet={leet_mode}, engines={profile.get('engines', 'default')}]...")
+            try:
+                result = run_profile_pipeline(profile, output_path=output)
+                count = result.get("lines_written", 0)
+                elapsed = result.get("elapsed_secs", 0)
+                archive = result.get("archive", {})
+                feedback = result.get("feedback", {})
+                if count:
+                    dest = archive.get("output_path") or output
+                    _ok(f"Generated: {count:,} entries → {dest} [{elapsed}s]")
+                    if feedback:
+                        hit_rate = feedback.get("hit_rate", 0)
+                        hits = feedback.get("hits", 0)
+                        total = feedback.get("total", 0)
+                        _info(f"Feedback: {hits}/{total} known targets found ({hit_rate:.1%} hit rate)")
+                else:
+                    _warn("No entries written.")
+            except Exception as exc:
+                _err(f"Pipeline error: {exc}")
         else:
-            _warn("No entries written.")
+            _info(f"Running generation pipeline [leet={leet_mode}] → stdout...")
+            try:
+                config = PipelineConfig.from_profile(profile)
+                pipeline = ProfilePipeline(profile, config)
+                count = _write_output(pipeline.run(), None)
+                _ok(f"Generated: {count:,} entries (stdout — use -o or interactive output prompt to save)")
+            except Exception as exc:
+                _err(f"Pipeline error: {exc}")
     else:
-        _info(f"Generating wordlist from profile [leet={leet_mode}]...")
-        gen = generate_from_profile(profile, leet_mode=leet_mode)
-        count = _write_output(gen, None)
-        _ok(f"Generated: {count:,} entries (stdout — use -o or interactive output prompt to save)")
+        # Fallback to legacy generator when pipeline_engine is unavailable
+        from wfh_modules.profiler import generate_from_profile
+        if output:
+            preview = _profile_preview_and_confirm(profile, leet_mode, output)
+            if preview is None:
+                return
+            est_count, avg_len = preview
+            _info(f"Generating wordlist from profile [leet={leet_mode}]...")
+            gen = generate_from_profile(profile, leet_mode=leet_mode)
+            count = _write_output(
+                gen, output,
+                estimate=est_count,
+                min_len=int(profile.get("min_len", 0) or 0),
+                max_len=int(profile.get("max_len", 0) or 0),
+                avg_entry_len=max(1, int(avg_len)),
+            )
+            if count:
+                _ok(f"Generated: {count:,} entries → {output}")
+            else:
+                _warn("No entries written.")
+        else:
+            _info(f"Generating wordlist from profile [leet={leet_mode}]...")
+            gen = generate_from_profile(profile, leet_mode=leet_mode)
+            count = _write_output(gen, None)
+            _ok(f"Generated: {count:,} entries (stdout — use -o or interactive output prompt to save)")
 
 
 def cmd_corp(args: argparse.Namespace) -> None:
@@ -1248,6 +1321,30 @@ def cmd_analyze(args: argparse.Namespace) -> None:
         except Exception as exc:
             _warn(f"Mask analysis failed: {exc}")
 
+    if getattr(args, "mask_optindex", False):
+        from wfh_modules.analyzer import (
+            maskgen_optindex,
+            format_maskgen_report,
+            export_masks_csv_pack,
+        )
+        _info("Running PACK maskgen optindex ranking...")
+        try:
+            if mask_data is None:
+                mask_data = analyze_masks(args.wordlist, top_n=args.top)
+            opt_rows = maskgen_optindex(
+                mask_data,
+                pps=int(getattr(args, "pps", 0) or 0),
+                target_time_hrs=float(getattr(args, "time_budget", 1.0) or 1.0),
+                use_gpu=bool(getattr(args, "use_gpu", False)),
+            )
+            print(format_maskgen_report(opt_rows))
+            opt_out = getattr(args, "mask_csv", None)
+            if opt_out:
+                export_masks_csv_pack(opt_rows, opt_out)
+                _ok(f"PACK mask CSV saved: {opt_out}")
+        except Exception as exc:
+            _warn(f"Mask optindex failed: {exc}")
+
     do_base = getattr(args, "base_words", False)
     base_output = getattr(args, "base_output", None)
 
@@ -1718,21 +1815,93 @@ def cmd_mangle(args: argparse.Namespace) -> None:
         _err(f"File not found: {wordlist_path}")
         return
 
-    rules = getattr(args, "rules", "all") or "all"
-    if rules == "all":
-        active_rules = list(BUILTIN_RULES.keys())
-    else:
-        active_rules = [r.strip() for r in rules.split(",") if r.strip()]
-
-    _info(f"Mangling: {wordlist_path} with rules: {', '.join(active_rules)}")
-
     lines: list[str] = []
     with path.open(encoding="utf-8", errors="replace") as f:
         lines = [ln.rstrip("\n\r") for ln in f if ln.strip()]
 
-    gen = apply_rules(lines, active_rules)
+    if getattr(args, "overseer", False):
+        from wfh_modules.mangler import overseer_expand, OverseerConfig
+        cfg = OverseerConfig(
+            pps=int(getattr(args, "pps", 0) or 0),
+            target_time_hrs=float(getattr(args, "time_budget", 1.0) or 1.0),
+            use_gpu=bool(getattr(args, "use_gpu", False)),
+            use_capswap=bool(getattr(args, "capswap", False)),
+        )
+        masks_raw = getattr(args, "masks", None)
+        if masks_raw:
+            cfg.masks = [m.strip() for m in masks_raw.split(",") if m.strip()]
+        _info(
+            f"PyMangler Overseer: {len(lines)} base words, "
+            f"budget={cfg.target_time_hrs}h, gpu={cfg.use_gpu}"
+        )
+        gen = overseer_expand(lines[:50], cfg)
+    else:
+        rules = getattr(args, "rules", "all") or "all"
+        if rules == "all":
+            active_rules = list(BUILTIN_RULES.keys())
+        else:
+            active_rules = [r.strip() for r in rules.split(",") if r.strip()]
+        _info(f"Mangling: {wordlist_path} with rules: {', '.join(active_rules)}")
+        gen = apply_rules(lines, active_rules)
+
     count = _write_output(gen, args.output)
     _ok(f"Mangled output: {count:,} entries")
+
+
+def cmd_improve(args: argparse.Namespace) -> None:
+    """Enrich an existing wordlist (CUPP -w parity)."""
+    from wfh_modules.profiler import improve_wordlist
+
+    source = getattr(args, "wordlist", None)
+    if not source:
+        _err("Provide a wordlist to improve.")
+        return
+    if not Path(source).is_file():
+        _err(f"File not found: {source}")
+        return
+
+    output = args.output or str(
+        Path(source).with_name(Path(source).stem + ".improved.lst")
+    )
+    count = improve_wordlist(
+        source_path=source,
+        output_path=output,
+        leet_mode=getattr(args, "leet", "basic") or "basic",
+        append_years=not getattr(args, "no_years", False),
+        append_specials=not getattr(args, "no_specials", False),
+        year_start=int(getattr(args, "year_start", 2020)),
+        year_end=int(getattr(args, "year_end", 2027)),
+        min_len=int(getattr(args, "min_len", 6)),
+        max_len=int(getattr(args, "max_len", 32)),
+    )
+    _ok(f"Improved wordlist: {count:,} entries -> {output}")
+
+
+def cmd_maya_rank(args: argparse.Namespace) -> None:
+    """Rank a wordlist by MAYA-inspired cracking probability."""
+    from wfh_modules.maya_ranker import rank_wordlist, format_rank_report
+
+    source = getattr(args, "wordlist", None)
+    if not source:
+        _err("Provide a wordlist to rank.")
+        return
+    if not Path(source).is_file():
+        _err(f"File not found: {source}")
+        return
+
+    output = args.output or str(Path(source).with_suffix(".ranked.lst"))
+    backend = getattr(args, "backend", "auto") or "auto"
+    result = rank_wordlist(
+        input_path=source,
+        output_path=output,
+        use_gpu=bool(getattr(args, "use_gpu", False)),
+        top_n=int(getattr(args, "top", 0) or 0),
+        backend=backend,
+        min_score=float(getattr(args, "min_score", 0.0) or 0.0),
+    )
+    print(format_rank_report(result))
+    if args.output:
+        _ok(f"Ranked wordlist saved: {output}")
 
 
 def cmd_br_names(args: argparse.Namespace) -> None:
@@ -2084,6 +2253,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--version", action="version", version=f"wfh.py {VERSION}")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose mode")
+    parser.add_argument(
+        "--lang", metavar="LOCALE", default=None,
+        help=(
+            "Language/locale for generated tokens and interactive prompts: "
+            "en (default) | pt-br | pt-pt | es. "
+            "Controls month names, zodiac sign names, and UI language in the wizard. "
+            "When omitted, defaults to 'en' (or the YAML locale: field if present)."
+        ),
+    )
 
     # ── Global compute / threading / ML args ──────────────────────────────────
     parser.add_argument(
@@ -2202,6 +2380,16 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Parent names (BEWGor parity)")
     p_pr.add_argument("--siblings", nargs="+", metavar="NAME",
                        help="Sibling names (BEWGor parity)")
+    p_pr.add_argument("--engines", metavar="SPEC",
+                       help=(
+                           "Engine selection: preset name (light/medium/potent/nuclear), "
+                           "numeric IDs (1,3,5), range (1-10), or 'all'. "
+                           "Skips interactive engine menu when provided."
+                       ))
+    p_pr.add_argument("--max-candidates", dest="max_candidates", type=int, default=0, metavar="N",
+                       help="Hard limit on generated candidates (0 = unlimited)")
+    p_pr.add_argument("--timeout", dest="timeout_secs", type=float, default=0.0, metavar="SECS",
+                       help="Pipeline timeout in seconds (0 = no timeout)")
     p_pr.add_argument("-o", "--output", help="Output file")
 
     # ── corp ──────────────────────────────────────────────────────────────
@@ -2501,6 +2689,16 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Show character frequency by position (pipal Frequency_Checker)")
     p_an.add_argument("--all-masks", dest="all_masks", action="store_true",
                        help="Show ALL masks (not just top N)")
+    p_an.add_argument("--mask-optindex", dest="mask_optindex", action="store_true",
+                       help="PACK maskgen optindex ranking with time budget")
+    p_an.add_argument("--mask-csv", dest="mask_csv", metavar="FILE",
+                       help="Export PACK-compatible mask CSV (requires --mask-optindex)")
+    p_an.add_argument("--time-budget", dest="time_budget", type=float, default=1.0,
+                       help="Crack time budget hours for --mask-optindex")
+    p_an.add_argument("--pps", type=int, default=0,
+                       help="Passwords/sec for --mask-optindex (0=auto)")
+    p_an.add_argument("--use-gpu", dest="use_gpu", action="store_true",
+                       help="GPU PPS for --mask-optindex (optional)")
     p_an.add_argument("--format", dest="format", choices=["text", "json", "csv", "markdown"],
                        default="text", help="Output format: text, json, csv, markdown (default: text)")
     p_an.add_argument("-o", "--output", help="Save report to file")
@@ -2684,7 +2882,47 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Comma-separated rule names or 'all' (default: all)")
     p_mn.add_argument("--list-rules", dest="list_rules", action="store_true",
                        help="List available mangling rules and exit")
+    p_mn.add_argument("--overseer", action="store_true",
+                       help="PyMangler Overseer mask mode with time budget")
+    p_mn.add_argument("--masks", metavar="LIST",
+                       help="Comma-separated masks for Overseer (w,wd,wds,...)")
+    p_mn.add_argument("--time-budget", dest="time_budget", type=float, default=1.0,
+                       help="Crack time budget in hours for Overseer (default: 1.0)")
+    p_mn.add_argument("--pps", type=int, default=0,
+                       help="Passwords/sec for Overseer budget (0=auto CPU/GPU)")
+    p_mn.add_argument("--use-gpu", dest="use_gpu", action="store_true",
+                       help="Use GPU PPS defaults in Overseer mode (optional)")
+    p_mn.add_argument("--capswap", action="store_true",
+                       help="Enable positional capswap in Overseer mode")
     p_mn.add_argument("-o", "--output", help="Output file")
+
+    # ── improve (CUPP -w parity) ─────────────────────────────────────────────
+    p_imp = sub.add_parser(
+        "improve",
+        help="Enrich an existing wordlist with leet, years, and specials",
+    )
+    p_imp.add_argument("wordlist", help="Source wordlist")
+    p_imp.add_argument("-o", "--output", help="Output file")
+    p_imp.add_argument("--leet", default="basic", choices=["basic", "medium", "aggressive"])
+    p_imp.add_argument("--no-years", dest="no_years", action="store_true")
+    p_imp.add_argument("--no-specials", dest="no_specials", action="store_true")
+    p_imp.add_argument("--year-start", dest="year_start", type=int, default=2020)
+    p_imp.add_argument("--year-end", dest="year_end", type=int, default=2027)
+    p_imp.add_argument("--min-len", dest="min_len", type=int, default=6)
+    p_imp.add_argument("--max-len", dest="max_len", type=int, default=32)
+
+    # ── maya-rank ─────────────────────────────────────────────────────────────
+    p_mr = sub.add_parser(
+        "maya-rank",
+        help="Rank wordlist candidates by MAYA cracking probability",
+    )
+    p_mr.add_argument("wordlist", help="Wordlist to rank")
+    p_mr.add_argument("-o", "--output", help="Ranked output file")
+    p_mr.add_argument("--top", type=int, default=0, help="Keep top N candidates (0=all)")
+    p_mr.add_argument("--backend", choices=["auto", "torch", "fallback"], default="auto")
+    p_mr.add_argument("--use-gpu", dest="use_gpu", action="store_true",
+                       help="Use GPU for torch backend (optional)")
+    p_mr.add_argument("--min-score", dest="min_score", type=float, default=0.0)
 
     # ── default-creds ─────────────────────────────────────────────────────────
     p_dc = sub.add_parser(
@@ -3716,6 +3954,15 @@ def main() -> None:
     if args.verbose if hasattr(args, "verbose") else False:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    # ── Apply locale ──────────────────────────────────────────────────────────
+    _raw_lang = getattr(args, "lang", None)
+    if _raw_lang:
+        from wfh_modules.i18n import set_session_locale as _set_locale
+        _active_locale = _set_locale(_raw_lang)
+        _GLOBAL_CTX["locale"] = _active_locale
+    else:
+        _GLOBAL_CTX.setdefault("locale", "en")
+
     # ── Apply global execution context ────────────────────────────────────────
     from wfh_modules.thread_pool import validate_thread_count, DEFAULT_THREADS
     from wfh_modules.compute_backend import set_backend
@@ -3790,6 +4037,8 @@ def main() -> None:
         "corp-prefixes": cmd_corp_prefixes,
         "sysinfo":       cmd_sysinfo,
         "mangle":        cmd_mangle,
+        "improve":       cmd_improve,
+        "maya-rank":     cmd_maya_rank,
         "default-creds": cmd_default_creds,
         "isp-keygen":    cmd_isp_keygen,
         "password-dna":  cmd_password_dna,

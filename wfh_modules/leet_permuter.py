@@ -14,8 +14,9 @@ Versão: 1.0.0
 from __future__ import annotations
 
 import logging
+import zlib
 from itertools import product
-from typing import Generator
+from typing import Generator, Iterable
 
 logger = logging.getLogger(__name__)
 
@@ -116,6 +117,60 @@ LEET_AGGRESSIVE: dict[str, list[str]] = {
     "z": ["z", "2", "7_"],
     "Z": ["Z", "2"],
 }
+
+
+ELPSCRK_LEVELS: dict[int, str] = {
+    0: "basic (name+date only)",
+    1: "standard (combos + suffixes)",
+    2: "extended (leet + reversed + upper)",
+    3: "full (OWASP chars appended)",
+    4: "intensive (perm depth + custom years)",
+    5: "max (unconstrained perm)",
+}
+
+
+def leet_perm_wordlist(
+    words: Iterable[str],
+    leet_map: dict[str, str] | None = None,
+    max_per_word: int = 512,
+) -> Generator[str, None, None]:
+    """Apply cartesian leet permutation across an entire wordlist.
+
+    Ports elpscrk's leet_perm: for each word, generates the full cartesian
+    product of {original_char, leet_sub(char)} for every character position.
+    Unlike token-level leet applied during generation, this is a global pass
+    over the completed wordlist.
+
+    Args:
+        words: Input wordlist (list or any iterable of strings).
+        leet_map: Simple char-to-char substitution map. Defaults to LEET_MEDIUM
+                  (first non-original substitution per character).
+        max_per_word: Maximum product iterations per word to prevent combinatorial
+                      explosion.
+
+    Yields:
+        Unique word variants (including originals) deduplicated via CRC32.
+    """
+    if leet_map is None:
+        leet_map = {
+            k: (v[1] if len(v) > 1 else k)
+            for k, v in LEET_MEDIUM.items()
+        }
+
+    seen_crc: set[int] = set()
+
+    for word in words:
+        char_sets = [{c, leet_map.get(c, c)} for c in word]
+        count = 0
+        for combo in product(*char_sets):
+            if count >= max_per_word:
+                break
+            count += 1
+            variant = "".join(combo)
+            crc = zlib.crc32(variant.encode())
+            if crc not in seen_crc:
+                seen_crc.add(crc)
+                yield variant
 
 
 def parse_custom_mapping(mapping_str: str) -> dict[str, list[str]]:

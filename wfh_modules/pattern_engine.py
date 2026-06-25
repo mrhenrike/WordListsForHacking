@@ -285,3 +285,84 @@ def generate_from_template_file(
         if not line or line.startswith("#"):
             continue
         yield from render_template(line, variables)
+
+
+def generate_pymangler_masks(
+    words: list[str],
+    masks: Optional[list[str]] = None,
+    use_gpu: bool = False,
+    target_time_hrs: float = 0.0,
+    pps: int = 0,
+    use_capswap: bool = False,
+    min_len: int = 6,
+    max_len: int = 32,
+) -> Generator[str, None, None]:
+    """Generate password candidates via PyMangler-style masks (w/d/s).
+
+    Wraps :func:`mangler.overseer_expand` when a time budget is set, otherwise
+    expands each mask with a per-mask cap to avoid combinatorial explosion.
+
+    Args:
+        words: Base word tokens for ``w`` positions in masks.
+        masks: Mask strings (default: COMMON_MASKS from mangler).
+        use_gpu: Optional GPU for Overseer PPS defaults.
+        target_time_hrs: Crack time budget in hours (0 = no budget, use per-mask cap).
+        pps: Passwords per second for budget (0 = auto CPU/GPU default).
+        use_capswap: Apply positional case combinations to word tokens.
+        min_len: Minimum candidate length.
+        max_len: Maximum candidate length.
+
+    Yields:
+        Mask-expanded password candidates.
+    """
+    if not words:
+        return
+
+    try:
+        from wfh_modules.mangler import (
+            overseer_expand,
+            OverseerConfig,
+            mask_expand,
+            COMMON_MASKS,
+        )
+    except ImportError:
+        logger.debug("mangler not available for pymangler masks")
+        return
+
+    clean_words = []
+    seen: set[str] = set()
+    for w in words:
+        w = w.strip()
+        if not w:
+            continue
+        key = w.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        clean_words.append(w)
+
+    if not clean_words:
+        return
+
+    mask_list = masks or list(COMMON_MASKS)
+
+    if target_time_hrs > 0:
+        cfg = OverseerConfig(
+            pps=pps,
+            target_time_hrs=target_time_hrs,
+            masks=mask_list,
+            use_gpu=use_gpu,
+            use_capswap=use_capswap,
+        )
+        gen: Generator[str, None, None] = overseer_expand(clean_words[:15], cfg)
+    else:
+        def _limited_masks() -> Generator[str, None, None]:
+            for mask in mask_list[:12]:
+                yield from mask_expand(
+                    mask, clean_words[:10], max_output=256,
+                )
+        gen = _limited_masks()
+
+    for candidate in gen:
+        if min_len <= len(candidate) <= max_len:
+            yield candidate

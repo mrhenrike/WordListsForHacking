@@ -37,6 +37,151 @@ _CAPITALIZATION_PATTERNS = {
     "mixed": lambda _: True,
 }
 
+# ── Detection rules leves (pcfg_cracker parity) ─────────────────────────────
+
+_KB_ROWS: list[str] = [
+    "1234567890",
+    "qwertyuiop",
+    "asdfghjkl",
+    "zxcvbnm",
+]
+
+# Precomputed adjacency pairs (both directions, lowercase)
+_KB_ADJACENT: frozenset[tuple[str, str]] = frozenset(
+    pair
+    for row in _KB_ROWS
+    for i in range(len(row) - 1)
+    for pair in [(row[i], row[i + 1]), (row[i + 1], row[i])]
+)
+
+_LEET_CHARS: frozenset[str] = frozenset("013456789@$!|+")
+_LEET_DETECT_MAP: dict[str, str] = {
+    "0": "o", "1": "i", "3": "e", "4": "a", "5": "s",
+    "@": "a", "$": "s", "!": "i",
+}
+
+_YEAR_RE = re.compile(r"^(19[0-9]{2}|20[0-2][0-9]|2030)$")
+_EMAIL_RE = re.compile(
+    r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}$"
+)
+_WEBSITE_RE = re.compile(
+    r"(^www\.|^https?://|\.com|\.br|\.org|\.net|\.io|\.gov)",
+    re.IGNORECASE,
+)
+_PHONE_RE = re.compile(r"^\+?[0-9]{7,15}$")
+
+
+def detect_keyboard_walk(segment: str, min_run: int = 3) -> bool:
+    """Detect QWERTY/QWERTZ/AZERTY keyboard walk patterns in a segment.
+
+    Returns True if there is a run of at least *min_run* characters where
+    every consecutive pair is horizontally adjacent on a keyboard row.
+    """
+    low = segment.lower()
+    if len(low) < min_run:
+        return False
+    run = 1
+    for i in range(1, len(low)):
+        if (low[i - 1], low[i]) in _KB_ADJACENT:
+            run += 1
+            if run >= min_run:
+                return True
+        else:
+            run = 1
+    return False
+
+
+def detect_leet(segment: str) -> bool:
+    """Detect if segment contains leet-speak substitutions.
+
+    Checks for: 0->o, 1->i, 3->e, 4->a, 5->s, @->a, $->s, !->i.
+    """
+    return any(ch in _LEET_DETECT_MAP for ch in segment)
+
+
+def detect_year(segment: str) -> bool:
+    """Detect if segment is a 4-digit year in range 1900-2030."""
+    return bool(_YEAR_RE.match(segment.strip()))
+
+
+def detect_email(password: str) -> bool:
+    """Detect if password matches email pattern (user@domain.tld)."""
+    return bool(_EMAIL_RE.match(password.strip()))
+
+
+def detect_website(password: str) -> bool:
+    """Detect if password matches website pattern (www., http, .com, .br, .org)."""
+    return bool(_WEBSITE_RE.search(password))
+
+
+def detect_phone(segment: str) -> bool:
+    """Detect if segment is a phone number (7-15 digits, may start with +)."""
+    return bool(_PHONE_RE.match(segment.strip()))
+
+
+def tag_segments(password: str) -> list[dict]:
+    """Tag each segment of a password with detection results.
+
+    Splits the password into contiguous alpha / digit / special segments,
+    then applies all detection rules and assigns a primary type tag.
+
+    Returns:
+        List of dicts with keys:
+          - ``segment``: the raw segment string
+          - ``type``: primary type char (L=alpha, D=digit, S=special)
+          - ``detected_tags``: list of secondary tag chars applied
+              K=keyboard_walk, Y=year, E=email, W=website
+
+    Note: E and W tags are only applied to the full password (not sub-segments).
+    """
+    results: list[dict] = []
+    i = 0
+    pw = password
+
+    # Full-password level tags
+    full_tags: list[str] = []
+    if detect_email(pw):
+        full_tags.append("E")
+    elif detect_website(pw):
+        full_tags.append("W")
+
+    while i < len(pw):
+        if pw[i].isalpha():
+            j = i
+            while j < len(pw) and pw[j].isalpha():
+                j += 1
+            seg = pw[i:j]
+            tags: list[str] = []
+            if detect_keyboard_walk(seg):
+                tags.append("K")
+            if full_tags:
+                tags.extend(full_tags)
+            results.append({"segment": seg, "type": "L", "detected_tags": tags})
+            i = j
+        elif pw[i].isdigit():
+            j = i
+            while j < len(pw) and pw[j].isdigit():
+                j += 1
+            seg = pw[i:j]
+            tags = []
+            if detect_year(seg):
+                tags.append("Y")
+            if detect_keyboard_walk(seg):
+                tags.append("K")
+            if full_tags:
+                tags.extend(full_tags)
+            results.append({"segment": seg, "type": "D", "detected_tags": tags})
+            i = j
+        else:
+            j = i
+            while j < len(pw) and not pw[j].isalpha() and not pw[j].isdigit():
+                j += 1
+            seg = pw[i:j]
+            results.append({"segment": seg, "type": "S", "detected_tags": list(full_tags)})
+            i = j
+
+    return results
+
 
 class PCFGGrammar:
     """Probabilistic context-free grammar for password generation.
@@ -68,12 +213,22 @@ class PCFGGrammar:
             return "L", f"L{len(segment)}", segment.lower()
         return "S", f"S{len(segment)}", segment
 
-    def _decompose(self, password: str) -> tuple[str, list[tuple[str, str, str]]]:
+    def _decompose(
+        self,
+        password: str,
+        use_detection: bool = False,
+    ) -> tuple[str, list[tuple[str, str, str]]]:
         """Decompose a password into structural template and segments.
+
+        When *use_detection* is True, segment boundaries and capitalization
+        hints come from :func:`tag_segments` (keyboard walk, leet, year tags).
 
         Returns:
             Tuple of (template_string, list of (class, key, value) tuples).
         """
+        if use_detection:
+            return self._decompose_detected(password)
+
         segments: list[tuple[str, str, str]] = []
         template_parts: list[str] = []
 
@@ -113,13 +268,49 @@ class PCFGGrammar:
         template = "".join(template_parts)
         return template, segments
 
-    def train(self, password: str) -> None:
+    def _decompose_detected(
+        self,
+        password: str,
+    ) -> tuple[str, list[tuple[str, str, str]]]:
+        """Decompose using :func:`tag_segments` detection rules."""
+        segments: list[tuple[str, str, str]] = []
+        template_parts: list[str] = []
+
+        for item in tag_segments(password):
+            seg = item["segment"]
+            typ = item["type"]
+            tags = item.get("detected_tags") or []
+
+            if typ == "L":
+                cls, key, norm = self._classify_segment(seg)
+                if "K" in tags:
+                    cap = "keyboard_walk"
+                elif detect_leet(seg):
+                    cap = "leet"
+                else:
+                    cap = "all_lower"
+                    for name, check in _CAPITALIZATION_PATTERNS.items():
+                        if check(seg):
+                            cap = name
+                            break
+                segments.append((key, norm, cap))
+                template_parts.append(f"L{len(seg)}")
+            elif typ == "D":
+                segments.append((f"D{len(seg)}", seg, ""))
+                template_parts.append(f"D{len(seg)}")
+            else:
+                segments.append((f"S{len(seg)}", seg, ""))
+                template_parts.append(f"S{len(seg)}")
+
+        return "".join(template_parts), segments
+
+    def train(self, password: str, use_detection: bool = False) -> None:
         """Train the grammar on a single password."""
         password = password.strip()
         if not password or len(password) < 2:
             return
 
-        template, segments = self._decompose(password)
+        template, segments = self._decompose(password, use_detection=use_detection)
         self.structure_counts[template] += 1
 
         for key, value, cap in segments:
