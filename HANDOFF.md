@@ -1,5 +1,15 @@
 # HANDOFF — WordListsForHacking
 
+## [2026-06-25] — v2.7.2 aliases unificados, leet numérico, defaults de export
+
+### Estado ao encerrar
+- Wizard: um único prompt para apelidos/nicknames/partes do nome (`field.aliases`)
+- Leet mode: seleção por número 1–4 ou slug (none/basic/medium/aggressive)
+- Finalização: prompts indicam defaults (Enter=sim/0/lst) + resumo `output.summary`
+- `setup_venv.sh`: recria venv quebrado; usa `.venv/bin/pip` (PEP 668)
+
+---
+
 ## [2026-06-25] — v2.7.1 wizard UX e seleção de motores
 
 ### Estado ao encerrar

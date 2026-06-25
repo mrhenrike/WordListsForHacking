@@ -82,21 +82,28 @@ fi
 PY_VER=$(python3 -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
 echo "Python version: $PY_VER"
 
-# Create venv
-if [ ! -d "$VENV_DIR" ]; then
+# Create or repair venv
+_venv_python() {
+    [ -x "$VENV_DIR/bin/python" ] && "$VENV_DIR/bin/python" -c "import sys" 2>/dev/null
+}
+
+if [ ! -d "$VENV_DIR" ] || ! _venv_python; then
+    if [ -d "$VENV_DIR" ]; then
+        echo "Removing broken venv at $VENV_DIR"
+        rm -rf "$VENV_DIR"
+    fi
     python3 -m venv "$VENV_DIR"
     echo "venv created at $VENV_DIR"
 else
     echo "venv already exists at $VENV_DIR"
 fi
 
-# Activate and install
-source "$VENV_DIR/bin/activate"
-pip install --upgrade pip --quiet
+# Install using venv pip explicitly (avoids PEP 668 system pip)
+"$VENV_DIR/bin/pip" install --upgrade pip --quiet
 
 echo ""
 echo "--- Installing core dependencies ---"
-pip install -r requirements.txt
+"$VENV_DIR/bin/pip" install -r requirements.txt
 
 echo ""
 echo "=== Environment ready! ==="

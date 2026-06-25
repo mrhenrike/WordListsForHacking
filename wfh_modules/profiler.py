@@ -2089,6 +2089,37 @@ def _ask_multi(prompt: str, hint: str = "(one per line, empty to stop)") -> list
     return values
 
 
+def _ask_aliases(t_func, multi_hint: str) -> tuple[str, list[str]]:
+    """Single prompt for short name + nicknames (deduplicated)."""
+    aliases = _ask_multi(t_func("field.aliases"), multi_hint)
+    seen: set[str] = set()
+    unique: list[str] = []
+    for a in aliases:
+        key = a.casefold()
+        if key not in seen:
+            seen.add(key)
+            unique.append(a)
+    short_name = unique[0] if unique else ""
+    return short_name, unique
+
+
+_LEET_MODES = ("none", "basic", "medium", "aggressive")
+_LEET_BY_NUM = {"1": "none", "2": "basic", "3": "medium", "4": "aggressive"}
+
+
+def _ask_leet_mode(t_func, default: str = "basic") -> str:
+    """Prompt leet mode via number (1-4) or slug."""
+    print(f"  {t_func('gen.leet_menu')}")
+    raw = input(f"  {t_func('engines.prompt')} [{default}]: ").strip().lower()
+    if not raw:
+        return default
+    if raw in _LEET_BY_NUM:
+        return _LEET_BY_NUM[raw]
+    if raw in _LEET_MODES:
+        return raw
+    return default
+
+
 def _yes(raw: str) -> bool:
     """True if the user answered affirmatively."""
     return raw.lower() in ("y", "yes", "s", "si", "sim", "oui")
@@ -2130,9 +2161,8 @@ def interactive_profile(
     # ── Personal ─────────────────────────────────────────────
     print(t("section.personal"))
     profile["full_name"] = _ask(t("field.full_name"))
-    profile["short_name"] = _ask(t("field.short_name"))
     multi_hint = t("field.multi_hint")
-    profile["nicknames"] = _ask_multi(t("field.nicknames"), multi_hint)
+    profile["short_name"], profile["nicknames"] = _ask_aliases(t, multi_hint)
 
     dp = ask_date_profile(t("date.label_birth"), locale)
     dp_dict = dp.to_dict()
@@ -2316,7 +2346,7 @@ def interactive_profile(
     if preset_leet is not None:
         profile["leet_mode"] = preset_leet
     elif not profile.get("leet_mode"):
-        profile["leet_mode"] = _ask(t("gen.leet_mode")) or "basic"
+        profile["leet_mode"] = _ask_leet_mode(t)
     profile["with_spaces"] = _yes(_ask(t("gen.with_spaces")))
     profile["use_behavior_patterns"] = not _no(_ask(t("gen.behavior_patterns")))
     min_raw = _ask(t("gen.min_len"))
@@ -2344,6 +2374,12 @@ def interactive_profile(
             "sort":     export_opts.sort,
             "format":   export_fmt,
         }
+        print(t(
+            "output.summary",
+            sanitize=t("output.val_yes") if export_opts.sanitize else t("output.val_no"),
+            sort=export_opts.sort or "none",
+            format=export_fmt,
+        ))
     except ImportError:
         export_fmt = "lst"
         profile["output"] = {}

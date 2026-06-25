@@ -112,6 +112,12 @@ _CATALOG: dict[str, dict[str, str]] = {
         "en": "Short name or part of name", "pt-br": "Apelido ou parte do nome",
         "pt-pt": "Nome curto ou parte do nome", "es": "Nombre corto o parte del nombre",
     },
+    "field.aliases": {
+        "en": "Aliases / nicknames / name parts used in passwords (e.g. Mel, Johnny)",
+        "pt-br": "Apelidos, nicknames e partes do nome usadas em senhas (ex. Mel, Melzinha)",
+        "pt-pt": "Alcunhas, nicknames e partes do nome usadas em palavras-passe (ex. Mel)",
+        "es": "Apodos, alias y partes del nombre usadas en contraseñas (ej. Mel)",
+    },
     "field.nicknames": {
         "en": "Nicknames / aliases", "pt-br": "Apelidos / nicknames",
         "pt-pt": "Alcunhas / nicknames", "es": "Apodos / alias",
@@ -354,6 +360,12 @@ _CATALOG: dict[str, dict[str, str]] = {
         "en": "Leet mode [none/basic/medium/aggressive] (default: basic)", "pt-br": "Modo leet [none/basic/medium/aggressive] (padrão: basic)",
         "pt-pt": "Modo leet [none/basic/medium/aggressive] (predefinição: basic)", "es": "Modo leet [none/basic/medium/aggressive] (predeterminado: basic)",
     },
+    "gen.leet_menu": {
+        "en": "Leet mode — 1=none  2=basic (default)  3=medium  4=aggressive  (or type slug)",
+        "pt-br": "Modo leet — 1=none  2=basic (padrão)  3=medium  4=aggressive  (ou digite o slug)",
+        "pt-pt": "Modo leet — 1=none  2=basic (predefinição)  3=medium  4=aggressive  (ou escreva o slug)",
+        "es": "Modo leet — 1=none  2=basic (predeterminado)  3=medium  4=aggressive  (o escriba el slug)",
+    },
     "gen.with_spaces": {
         "en": "Include spaces between words? [y/N]", "pt-br": "Incluir espaços entre palavras? [s/N]",
         "pt-pt": "Incluir espaços entre palavras? [s/N]", "es": "¿Incluir espacios entre palabras? [s/N]",
@@ -476,16 +488,32 @@ _CATALOG: dict[str, dict[str, str]] = {
 
     # ── Finalização da saída ──────────────────────────────────────────────────
     "output.sanitize": {
-        "en": "Sanitize and remove duplicates? [Y/n]", "pt-br": "Sanitizar e remover duplicatas? [S/n]",
-        "pt-pt": "Sanitizar e remover duplicados? [S/n]", "es": "¿Sanitizar y eliminar duplicados? [S/n]",
+        "en": "Sanitize and remove duplicates? [Y/n, Enter=yes]", "pt-br": "Sanitizar e remover duplicatas? [S/n, Enter=sim]",
+        "pt-pt": "Sanitizar e remover duplicados? [S/n, Enter=sim]", "es": "¿Sanitizar y eliminar duplicados? [S/n, Enter=sí]",
     },
     "output.sort": {
-        "en": "Sort? 0=keep order  1=alpha asc  2=alpha desc  3=length asc  4=length desc", "pt-br": "Ordenar? 0=manter ordem  1=alfa asc  2=alfa desc  3=tamanho asc  4=tamanho desc",
-        "pt-pt": "Ordenar? 0=manter ordem  1=alfa asc  2=alfa desc  3=tamanho asc  4=tamanho desc", "es": "¿Ordenar? 0=mantener orden  1=alfa asc  2=alfa desc  3=longitud asc  4=longitud desc",
+        "en": "Sort? 0=keep order  1=alpha asc  2=alpha desc  3=length asc  4=length desc [Enter=0]",
+        "pt-br": "Ordenar? 0=manter ordem  1=alfa asc  2=alfa desc  3=tamanho asc  4=tamanho desc [Enter=0]",
+        "pt-pt": "Ordenar? 0=manter ordem  1=alfa asc  2=alfa desc  3=tamanho asc  4=tamanho desc [Enter=0]",
+        "es": "¿Ordenar? 0=mantener orden  1=alfa asc  2=alfa desc  3=longitud asc  4=longitud desc [Enter=0]",
     },
     "output.format": {
-        "en": "Format? 1=lst  2=txt  3=tar  4=tar.gz  5=zip", "pt-br": "Formato? 1=lst  2=txt  3=tar  4=tar.gz  5=zip",
-        "pt-pt": "Formato? 1=lst  2=txt  3=tar  4=tar.gz  5=zip", "es": "Formato? 1=lst  2=txt  3=tar  4=tar.gz  5=zip",
+        "en": "Format? 1=lst  2=txt  3=tar  4=tar.gz  5=zip [Enter=1 lst]",
+        "pt-br": "Formato? 1=lst  2=txt  3=tar  4=tar.gz  5=zip [Enter=1 lst]",
+        "pt-pt": "Formato? 1=lst  2=txt  3=tar  4=tar.gz  5=zip [Enter=1 lst]",
+        "es": "Formato? 1=lst  2=txt  3=tar  4=tar.gz  5=zip [Enter=1 lst]",
+    },
+    "output.summary": {
+        "en": "  → Export: sanitize={sanitize} | sort={sort} | format={format}",
+        "pt-br": "  → Exportação: sanitizar={sanitize} | ordenar={sort} | formato={format}",
+        "pt-pt": "  → Exportação: sanitizar={sanitize} | ordenar={sort} | formato={format}",
+        "es": "  → Exportación: sanitizar={sanitize} | ordenar={sort} | formato={format}",
+    },
+    "output.val_yes": {
+        "en": "yes", "pt-br": "sim", "pt-pt": "sim", "es": "sí",
+    },
+    "output.val_no": {
+        "en": "no", "pt-br": "não", "pt-pt": "não", "es": "no",
     },
     "output.path": {
         "en": "Output file path (leave blank for default)", "pt-br": "Caminho do arquivo de saída (Enter para usar padrão)",
