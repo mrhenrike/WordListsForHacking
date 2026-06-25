@@ -610,35 +610,64 @@ def _slug_from_name(name: str) -> str:
     return slug[:40] if slug else ""
 
 
+def _format_extension(fmt: str) -> str:
+    """Map export format to file extension."""
+    return {
+        "lst": ".lst",
+        "txt": ".txt",
+        "tar": ".tar",
+        "tar.gz": ".tar.gz",
+        "zip": ".zip",
+    }.get(fmt, ".lst")
+
+
+def suggested_profile_output_path(profile: dict, fmt: str = "lst") -> str:
+    """Default output path in cwd: <name-slug>.<ext> from export format."""
+    slug = _slug_from_name(profile.get("full_name", "") or "")
+    if not slug:
+        slug = f"profile_{uuid.uuid4().hex[:8]}"
+    return str(Path.cwd() / f"{slug}{_format_extension(fmt)}")
+
+
 def default_profile_output_path(profile: dict) -> str:
-    """Default output path: /tmp/<name-slug>.lst or /tmp/profile_<random>.lst."""
+    """Legacy default (lst in /tmp) — prefer suggested_profile_output_path."""
     slug = _slug_from_name(profile.get("full_name", "") or "")
     if not slug:
         slug = f"profile_{uuid.uuid4().hex[:8]}"
     return str(DEFAULT_OUTPUT_DIR / f"{slug}.lst")
 
 
-def normalize_profile_output_path(raw: str, profile: dict) -> str:
+def normalize_profile_output_path(
+    raw: str,
+    profile: dict,
+    fmt: str = "lst",
+) -> str:
     """
     Resolve interactive output path.
 
-    - Empty → auto name under /tmp
+    - Empty → suggested path in cwd using profile name + format extension
     - Absolute path or path with directory → use as-is (mkdir on write)
-    - Bare filename → /tmp/<filename>
+    - Bare filename → current working directory; adds extension if missing
     """
     raw = (raw or "").strip()
     if not raw:
-        return default_profile_output_path(profile)
+        return suggested_profile_output_path(profile, fmt)
     p = Path(raw).expanduser()
-    if p.is_absolute() or p.parent != Path("."):
-        return str(p)
-    return str(DEFAULT_OUTPUT_DIR / p.name)
+    target = p if (p.is_absolute() or p.parent != Path(".")) else Path.cwd() / p.name
+    if not target.suffix and fmt in ("lst", "txt", "zip", "tar"):
+        ext = _format_extension(fmt)
+        if ext == ".tar.gz":
+            target = target.with_name(target.name + ext)
+        else:
+            target = target.with_suffix(ext)
+    return str(target)
 
 
 def resolve_profile_output(cli_output: Optional[str], profile: dict) -> Optional[str]:
     """CLI -o wins; else interactive output_path; else None (stdout)."""
+    fmt = (profile.get("output") or {}).get("format", "lst")
     if cli_output:
-        return cli_output
+        return normalize_profile_output_path(cli_output, profile, fmt)
     if profile.get("output_path"):
         return profile["output_path"]
     return None
@@ -2039,17 +2068,18 @@ def _emit_all(
 
 # ── Interactive wizard ────────────────────────────────────────────────────────
 
-def _ask(prompt: str, required: bool = False) -> str:
+def _ask(prompt: str, required: bool = False, default_hint: str = "") -> str:
     """Prompt user for input, repeating if required and empty."""
+    suffix = f" [{default_hint}]" if default_hint else ""
     while True:
-        val = input(f"  {prompt}: ").strip()
+        val = input(f"  {prompt}{suffix}: ").strip()
         if val or not required:
             return val
 
 
-def _ask_multi(prompt: str) -> list[str]:
+def _ask_multi(prompt: str, hint: str = "(one per line, empty to stop)") -> list[str]:
     """Collect multiple values, stopping on empty input."""
-    print(f"  {prompt} (one per line, empty to stop):")
+    print(f"  {prompt} {hint}:")
     values: list[str] = []
     while True:
         val = input("    > ").strip()
@@ -2069,12 +2099,19 @@ def _no(raw: str) -> bool:
     return raw.lower() in ("n", "no", "nao", "não", "non")
 
 
-def interactive_profile() -> dict:
+def interactive_profile(
+    preset_leet: str | None = None,
+    preset_output: str | None = None,
+) -> dict:
     """
     Full interactive personal profiling wizard with i18n support.
 
     The first prompt selects the session language; all subsequent prompts
     are shown in the chosen locale. Default locale is 'en'.
+
+    Args:
+        preset_leet: Leet mode from CLI/menu; skips duplicate prompt.
+        preset_output: Output path from CLI/menu; skips duplicate path prompt.
 
     Returns:
         Dict with all collected profile data.
@@ -2094,9 +2131,10 @@ def interactive_profile() -> dict:
     print(t("section.personal"))
     profile["full_name"] = _ask(t("field.full_name"))
     profile["short_name"] = _ask(t("field.short_name"))
-    profile["nicknames"] = _ask_multi(t("field.nicknames"))
+    multi_hint = t("field.multi_hint")
+    profile["nicknames"] = _ask_multi(t("field.nicknames"), multi_hint)
 
-    dp = ask_date_profile(t("field.full_name"), locale)
+    dp = ask_date_profile(t("date.label_birth"), locale)
     dp_dict = dp.to_dict()
     profile.update({
         "birth_day":        dp_dict["birth_day"],
@@ -2112,7 +2150,7 @@ def interactive_profile() -> dict:
     })
 
     profile["national_id"] = _ask(t("field.national_id"))
-    profile["phones"] = _ask_multi(t("field.phones"))
+    profile["phones"] = _ask_multi(t("field.phones"), multi_hint)
     profile["location_city"] = _ask(t("field.city"))
     profile["location_state"] = _ask(t("field.state"))
     profile["location_country"] = _ask(t("field.country"))
@@ -2190,7 +2228,7 @@ def interactive_profile() -> dict:
         profile["_hire_date_tokens"] = build_date_tokens(hdp, locale)
 
     # ── Social media ──────────────────────────────────────────
-    profile["social_handles"] = _ask_multi(t("social.handles"))
+    profile["social_handles"] = _ask_multi(t("social.handles"), multi_hint)
 
     # ── Religion ──────────────────────────────────────────────
     print(f"\n{t('section.religion')}")
@@ -2225,13 +2263,13 @@ def interactive_profile() -> dict:
 
     # ── Keywords & special dates ──────────────────────────────
     print(f"\n{t('section.keywords')}")
-    profile["keywords"] = _ask_multi(t("keywords.list"))
-    profile["special_dates"] = _ask_multi(t("keywords.special_dates"))
+    profile["keywords"] = _ask_multi(t("keywords.list"), multi_hint)
+    profile["special_dates"] = _ask_multi(t("keywords.special_dates"), multi_hint)
 
     # ── Phrases & jargon ─────────────────────────────────────
     print(f"\n{t('section.phrases')}")
     print(f"  {t('phrases.hint')}")
-    profile["phrases"] = _ask_multi(t("phrases.enter"))
+    profile["phrases"] = _ask_multi(t("phrases.enter"), multi_hint)
     if profile["phrases"]:
         phrase_mode_raw = _ask(t("phrases.mode")).strip()
         profile["phrase_mode"] = {"1": "acrostic", "2": "full", "3": "both"}.get(phrase_mode_raw, "both")
@@ -2275,7 +2313,10 @@ def interactive_profile() -> dict:
 
     # ── Generation options ────────────────────────────────────
     print(f"\n{t('section.generation')}")
-    profile["leet_mode"] = _ask(t("gen.leet_mode")) or "basic"
+    if preset_leet is not None:
+        profile["leet_mode"] = preset_leet
+    elif not profile.get("leet_mode"):
+        profile["leet_mode"] = _ask(t("gen.leet_mode")) or "basic"
     profile["with_spaces"] = _yes(_ask(t("gen.with_spaces")))
     profile["use_behavior_patterns"] = not _no(_ask(t("gen.behavior_patterns")))
     min_raw = _ask(t("gen.min_len"))
@@ -2292,25 +2333,31 @@ def interactive_profile() -> dict:
 
     # ── Output finalization ────────────────────────────────────
     print(f"\n{t('section.output')}")
+    preset_out = (preset_output or "").strip()
     try:
         from wfh_modules.archive_export import ask_export_options
-        export_opts, out_raw = ask_export_options(t_func=t)
-        profile["_export_options"] = {
+        export_opts, _ = ask_export_options(t_func=t, ask_path=False)
+        export_fmt = export_opts.format.value
+        profile["output"] = {
             "sanitize": export_opts.sanitize,
             "dedupe":   export_opts.dedupe,
             "sort":     export_opts.sort,
-            "format":   export_opts.format.value,
+            "format":   export_fmt,
         }
     except ImportError:
-        # archive_export not yet available — fall back to simple path prompt
-        out_raw = ""
+        export_fmt = "lst"
+        profile["output"] = {}
 
-    if not out_raw:
-        default_out = default_profile_output_path(profile)
-        print(f"  Leave blank to use default: {default_out}")
-        out_raw = _ask(t("output.path"))
+    if preset_out:
+        out_raw = preset_out
+        print(t("output.using_path", path=preset_out))
+    else:
+        default_out = suggested_profile_output_path(profile, export_fmt)
+        out_raw = _ask(t("output.path"), default_hint=default_out)
+        if not out_raw:
+            out_raw = default_out
 
-    profile["output_path"] = normalize_profile_output_path(out_raw, profile)
+    profile["output_path"] = normalize_profile_output_path(out_raw, profile, export_fmt)
     print(t("output.will_save", path=profile["output_path"]))
 
     profile["interactive_mode"] = True

@@ -150,15 +150,22 @@ def get_engine(engine_id: int) -> Optional[EngineSpec]:
     return _REGISTRY_INDEX.get(engine_id)
 
 
+def default_engine_ids() -> set[int]:
+    """Engine IDs enabled by default (default_on in registry)."""
+    return {e.id for e in ENGINE_REGISTRY if e.default_on}
+
+
 def parse_engine_selection(raw: str) -> set[int]:
     """Parse a user-supplied engine selection string into a set of IDs.
 
     Accepted formats:
-      - "all", "", "y", "Y"     -> all engine IDs
+      - "all", "y", "Y"         -> engines with default_on=True
       - "L", "M", "P", "N"      -> preset expansion
       - "1-3"                    -> {1, 2, 3}
       - "1,3,5"                  -> {1, 3, 5}
       - "1-3,8,10"               -> {1, 2, 3, 8, 10}
+
+    Empty string is not valid here — use default_engine_ids() for Enter/default.
 
     Args:
         raw: Raw selection string from the user.
@@ -171,8 +178,11 @@ def parse_engine_selection(raw: str) -> set[int]:
     """
     stripped = raw.strip()
 
-    if stripped.lower() in {"all", "y", ""}:
-        return set(_VALID_IDS)
+    if not stripped:
+        raise ValueError("Empty selection — press Enter for defaults or choose L/M/P/N.")
+
+    if stripped.lower() in {"all", "y"}:
+        return default_engine_ids()
 
     if stripped in PRESET_ALIASES:
         preset_name = PRESET_ALIASES[stripped]
@@ -227,8 +237,8 @@ def resolve_engines(
         MemoryError: If NUCLEAR preset is selected but available RAM is below
             the threshold.
     """
-    if selection is None:
-        return {e.id for e in ENGINE_REGISTRY if e.default_on}
+    if selection is None or (isinstance(selection, str) and not str(selection).strip()):
+        return default_engine_ids()
 
     if isinstance(selection, set):
         ids = selection
@@ -259,7 +269,7 @@ def print_engine_menu(
             the built-in English descriptions are used.
     """
     if active_ids is None:
-        active_ids = {e.id for e in ENGINE_REGISTRY if e.default_on}
+        active_ids = default_engine_ids()
 
     def _t(key: str, fallback: str) -> str:
         if t_func is not None:
@@ -269,11 +279,9 @@ def print_engine_menu(
         return fallback
 
     print()
-    print("[ ENGINES ] Select variation engines:")
-    print()
-    print("  Presets:  L=light  M=medium  P=potent  N=NUCLEAR")
-    print("  Custom:   1-3  or  1,3,5  or  1-3,8,10")
-    print("  Default:  Enter = all enabled by default")
+    header = _t("engines.header", "Select variation engines")
+    for line in header.split("\n"):
+        print(f"  {line}")
     print()
     print(f"  {'ID':>3}  {'Engine':<22} {'Description':<40} {'Status'}")
     print("  " + "\u2500" * 75)
@@ -286,7 +294,7 @@ def print_engine_menu(
         print(f"  {spec.id:>3}{nuclear_tag} {name:<22} {desc:<40} {status}")
 
     print()
-    print("  (* NUCLEAR-only engines marked with *)")
+    print(f"  {_t('engines.nuclear_mark', '(* NUCLEAR-only engines marked with *)')}")
     print()
 
 
@@ -299,14 +307,26 @@ def ask_engine_selection(t_func=None) -> set[int]:
     Returns:
         Resolved set of selected engine IDs.
     """
-    default_ids = {e.id for e in ENGINE_REGISTRY if e.default_on}
+    default_ids = default_engine_ids()
+
+    def _t(key: str, fallback: str) -> str:
+        if t_func is not None:
+            translated = t_func(key)
+            if translated and translated != key:
+                return translated
+        return fallback
+
     print_engine_menu(active_ids=default_ids, t_func=t_func)
 
     while True:
         try:
-            raw = input("> ").strip()
+            prompt = _t("engines.prompt", "Choice (Enter=defaults)")
+            raw = input(f"  {prompt}: ").strip()
         except (EOFError, KeyboardInterrupt):
             logger.info("Engine selection interrupted; using defaults.")
+            return default_ids
+
+        if not raw:
             return default_ids
 
         try:
@@ -315,17 +335,23 @@ def ask_engine_selection(t_func=None) -> set[int]:
             print(f"  [!] {exc}")
             continue
 
-        if PRESETS["nuclear"].issubset(ids):
+        is_nuclear = ids == PRESETS["nuclear"] or ids == set(range(1, 30))
+        if is_nuclear:
             ram = _check_ram_gb()
             if ram < _NUCLEAR_RAM_THRESHOLD_GB:
-                print(
-                    f"  [!] WARNING: NUCLEAR preset selected but only {ram:.2f} GB RAM "
-                    f"available (minimum {_NUCLEAR_RAM_THRESHOLD_GB:.1f} GB recommended)."
+                msg = _t(
+                    "engines.nuclear_ram_block",
+                    "ERROR: NUCLEAR requires at least 4 GB free RAM. "
+                    "Current free: {free:.1f} GB. Use P=potent instead.",
                 )
-            else:
-                print(
-                    f"  [!] NUCLEAR preset selected — {len(ids)} engines active. "
-                    "This will generate a very large wordlist."
-                )
+                try:
+                    print(f"  [!] {msg.format(free=ram)}")
+                except (KeyError, IndexError):
+                    print(f"  [!] {msg}")
+                print(f"  [!] {_t('engines.nuclear_fallback', 'Try P=potent or M=medium, or press Enter for defaults.')}")
+                continue
+            print(
+                f"  [!] {_t('engines.nuclear_warning', 'WARNING: NUCLEAR preset — very large wordlist.')}"
+            )
 
         return ids

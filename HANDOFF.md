@@ -1,5 +1,18 @@
 # HANDOFF — WordListsForHacking
 
+## [2026-06-25] — v2.7.1 wizard UX e seleção de motores
+
+### Estado ao encerrar
+- `generation_engines.py`: Enter no menu de motores usa defaults (`default_on`), não NUCLEAR; bloqueio de RAM antes do pipeline
+- `profiler.py` / `archive_export.py`: i18n de saída corrigido; caminho único; `-o` respeitado; default em cwd
+- `wfh.py`: menu interativo — exit sem prompt de output; validação de motores antes do preview
+- `i18n/prompts.py`: labels de data, multi-line hint, mensagens de motores
+
+### Próximo passo imediato
+- Wiki: nota v2.7.1 changelog (wizard/profile)
+
+---
+
 ## [2026-06-23] — Parsers CLI, fase 4 parity, README local-only
 
 ### Estado ao encerrar

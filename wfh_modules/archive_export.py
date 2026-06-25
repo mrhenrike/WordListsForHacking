@@ -209,30 +209,36 @@ def export_wordlist(
                 logger.warning("Could not remove temp file %s: %s", tmp_file, exc)
 
 
-def ask_export_options(t_func=None) -> tuple[ExportOptions, str]:
+def ask_export_options(
+    t_func=None,
+    preset_path: str | None = None,
+    ask_path: bool = True,
+) -> tuple[ExportOptions, str]:
     """Prompt the user interactively for export options.
 
     Args:
         t_func: Optional i18n function t(key) → str. When None, English strings
             are used directly.
+        preset_path: Output path already chosen (CLI/menu); skips path prompt.
+        ask_path: When False, never prompt for output path.
 
     Returns:
         Tuple of (ExportOptions, output_path).
     """
 
     def _t(key: str, fallback: str) -> str:
-        return t_func(key) if t_func else fallback
+        if t_func:
+            text = t_func(key)
+            return text if text != key else fallback
+        return fallback
 
     sanitize_ans = input(
-        _t("ask_sanitize", "Sanitize and remove duplicates? [Y/n]: ")
+        f"  {_t('output.sanitize', 'Sanitize and remove duplicates? [Y/n]')}: "
     ).strip().lower()
-    do_sanitize = sanitize_ans not in ("n", "no")
+    do_sanitize = sanitize_ans not in ("n", "no", "nao", "não")
 
     sort_choice = input(
-        _t(
-            "ask_sort",
-            "Sort? 0=keep order  1=alpha asc  2=alpha desc  3=length asc  4=length desc: ",
-        )
+        f"  {_t('output.sort', 'Sort? 0=keep order  1=alpha asc  2=alpha desc  3=length asc  4=length desc')}: "
     ).strip()
     sort_map_input: dict[str, str] = {
         "0": "none",
@@ -244,7 +250,7 @@ def ask_export_options(t_func=None) -> tuple[ExportOptions, str]:
     sort_mode = sort_map_input.get(sort_choice, "none")
 
     fmt_choice = input(
-        _t("ask_format", "Format? 1=lst  2=txt  3=tar  4=tar.gz  5=zip: ")
+        f"  {_t('output.format', 'Format? 1=lst  2=txt  3=tar  4=tar.gz  5=zip')}: "
     ).strip()
     fmt_map: dict[str, ExportFormat] = {
         "1": ExportFormat.LST,
@@ -255,11 +261,12 @@ def ask_export_options(t_func=None) -> tuple[ExportOptions, str]:
     }
     export_fmt = fmt_map.get(fmt_choice, ExportFormat.LST)
 
-    output_path = input(
-        _t("ask_output", "Output file path (leave blank for default): ")
-    ).strip()
-    if not output_path:
-        output_path = f"output.{export_fmt.value}"
+    if ask_path and not preset_path:
+        output_path = input(
+            f"  {_t('output.path', 'Output file path (leave blank for default)')}: "
+        ).strip()
+    else:
+        output_path = (preset_path or "").strip()
 
     opts = ExportOptions(
         format=export_fmt,

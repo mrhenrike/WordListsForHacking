@@ -83,7 +83,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("wfh")
 
-VERSION = "2.7.0"
+VERSION = "2.7.1"
 
 # ── Graceful shutdown ──────────────────────────────────────────────────────────
 _SHUTDOWN_REQUESTED = False
@@ -631,7 +631,10 @@ def cmd_profile(args: argparse.Namespace) -> None:
         if getattr(args, "nick", ""):
             profile["nicknames"] = [args.nick]
     else:
-        profile = interactive_profile()
+        profile = interactive_profile(
+            preset_leet=getattr(args, "leet", None),
+            preset_output=getattr(args, "output", None),
+        )
 
     # ── Inject year-range / suffix-range from CLI ────────────────────────────
     if getattr(args, "year_start", None) and getattr(args, "year_end", None):
@@ -677,6 +680,21 @@ def cmd_profile(args: argparse.Namespace) -> None:
     profile["leet_mode"] = leet_mode
 
     output = resolve_profile_output(getattr(args, "output", None), profile)
+
+    # Validate engine selection before expensive preview/pipeline
+    if profile.get("engines") or profile.get("_engine_ids"):
+        try:
+            from wfh_modules.generation_engines import resolve_engines
+            raw_eng = profile.get("engines") or ",".join(
+                str(i) for i in profile.get("_engine_ids", [])
+            )
+            resolve_engines(str(raw_eng))
+        except MemoryError as exc:
+            _err(str(exc))
+            return
+        except ValueError as exc:
+            _err(f"Invalid engine selection: {exc}")
+            return
 
     # ── Pipeline execution ───────────────────────────────────────────────────
     try:
@@ -2048,9 +2066,13 @@ def interactive_menu() -> None:
     print(MENU)
     choice = input(f"{Fore.CYAN}Select an option: {Style.RESET_ALL}").strip()
 
-    output = input("  Output file (Enter for stdout): ").strip() or None
+    if choice == "0":
+        _info("Exiting wfh.py.")
+        sys.exit(0)
 
-    ns = argparse.Namespace(output=output)
+    ns = argparse.Namespace(output=None)
+    if choice != "3":
+        ns.output = input("  Output file (Enter for stdout): ").strip() or None
 
     if choice == "1":
         ns.charset = input("  Charset (built-in name or chars): ").strip() or "lalpha"
@@ -2076,7 +2098,6 @@ def interactive_menu() -> None:
         ns.name = None
         ns.nick = None
         ns.birth = None
-        ns.leet = input("  Leet mode (basic/medium/aggressive/none): ").strip() or "basic"
         cmd_profile(ns)
 
     elif choice == "4":
@@ -2229,10 +2250,6 @@ def interactive_menu() -> None:
         ns.min_len = int(min_raw) if min_raw.isdigit() else 1
         ns.max_len = int(max_raw) if max_raw.isdigit() else 128
         cmd_mutate(ns)
-
-    elif choice == "0":
-        _info("Exiting wfh.py.")
-        sys.exit(0)
 
     else:
         _warn("Invalid option.")

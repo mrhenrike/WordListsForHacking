@@ -116,6 +116,10 @@ _CATALOG: dict[str, dict[str, str]] = {
         "en": "Nicknames / aliases", "pt-br": "Apelidos / nicknames",
         "pt-pt": "Alcunhas / nicknames", "es": "Apodos / alias",
     },
+    "field.multi_hint": {
+        "en": "(one per line, empty to stop)", "pt-br": "(uma por linha, vazio para parar)",
+        "pt-pt": "(uma por linha, vazio para parar)", "es": "(una por línea, vacío para terminar)",
+    },
     "field.national_id": {
         "en": "National ID / SSN / CPF (or leave blank)", "pt-br": "CPF / RG / Identidade (ou deixe em branco)",
         "pt-pt": "NIF / BI (ou deixe em branco)", "es": "DNI / CURP / RUT (o deje en blanco)",
@@ -139,10 +143,14 @@ _CATALOG: dict[str, dict[str, str]] = {
 
     # ── Datas ─────────────────────────────────────────────────────────────────
     "date.menu_header": {
-        "en":    "Date of birth — select input mode:",
-        "pt-br": "Data de nascimento — selecione o modo de entrada:",
-        "pt-pt": "Data de nascimento — selecione o modo de entrada:",
-        "es":    "Fecha de nacimiento — seleccione modo de entrada:",
+        "en":    "Select input mode:",
+        "pt-br": "Selecione o modo de entrada:",
+        "pt-pt": "Selecione o modo de entrada:",
+        "es":    "Seleccione modo de entrada:",
+    },
+    "date.label_birth": {
+        "en": "Date of birth", "pt-br": "Data de nascimento",
+        "pt-pt": "Data de nascimento", "es": "Fecha de nacimiento",
     },
     "date.mode_full": {
         "en": "1  Full date (dd/mm/yyyy or ddmmyyyy)", "pt-br": "1  Data completa (dd/mm/aaaa ou ddmmaaaa)",
@@ -414,6 +422,18 @@ _CATALOG: dict[str, dict[str, str]] = {
         "pt-pt": "ERRO: NUCLEAR requer pelo menos 4 GB de RAM livre. Livre atual: {free:.1f} GB. Use P=potente.",
         "es":    "ERROR: NUCLEAR requiere al menos 4 GB de RAM libre. Libre actual: {free:.1f} GB. Use P=potente.",
     },
+    "engines.nuclear_fallback": {
+        "en": "Try P=potent or M=medium, or press Enter for defaults.",
+        "pt-br": "Use P=potente ou M=médio, ou Enter para o padrão.",
+        "pt-pt": "Use P=potente ou M=médio, ou Enter para a predefinição.",
+        "es": "Use P=potente o M=medio, o Enter para el predeterminado.",
+    },
+    "engines.nuclear_mark": {
+        "en": "(* NUCLEAR-only engines marked with *)",
+        "pt-br": "(* motores exclusivos do NUCLEAR marcados com *)",
+        "pt-pt": "(* motores exclusivos do NUCLEAR marcados com *)",
+        "es": "(* motores exclusivos de NUCLEAR marcados con *)",
+    },
 
     # ── Nomes dos motores ────────────────────────────────────────────────────
     "engines.token_variants.name":      {"en": "Token variants",       "pt-br": "Variações de tokens",      "pt-pt": "Variações de tokens",      "es": "Variantes de tokens"},
@@ -470,6 +490,14 @@ _CATALOG: dict[str, dict[str, str]] = {
     "output.path": {
         "en": "Output file path (leave blank for default)", "pt-br": "Caminho do arquivo de saída (Enter para usar padrão)",
         "pt-pt": "Caminho do ficheiro de saída (Enter para usar predefinição)", "es": "Ruta del archivo de salida (Enter para usar predeterminado)",
+    },
+    "output.default_hint": {
+        "en": "Leave blank to use default: {path}", "pt-br": "Enter em branco para usar padrão: {path}",
+        "pt-pt": "Enter em branco para usar predefinição: {path}", "es": "Enter en blanco para usar predeterminado: {path}",
+    },
+    "output.using_path": {
+        "en": "  → Using output path from CLI: {path}", "pt-br": "  → Usando caminho da CLI: {path}",
+        "pt-pt": "  → A usar caminho da CLI: {path}", "es": "  → Usando ruta de la CLI: {path}",
     },
     "output.will_save": {
         "en": "  → Will save to: {path}", "pt-br": "  → Salvará em: {path}",

@@ -98,7 +98,7 @@ class PipelineConfig:
             cfg.engine_preset = preset_raw
 
         # Output
-        out_block = profile.get("output") or {}
+        out_block = profile.get("output") or profile.get("_export_options") or {}
         if isinstance(out_block, dict):
             cfg.output_format  = out_block.get("format", "lst")
             cfg.sanitize       = out_block.get("sanitize", True)
