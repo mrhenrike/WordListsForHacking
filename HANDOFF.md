@@ -116,3 +116,13 @@
 - Windows: `C:\Projetos-SafeLabs\submodules\Uniao-Geek\WordListsForHacking\`
 - Linux: `/mnt/predator/Projetos-SafeLabs/submodules/Uniao-Geek/WordListsForHacking/`
 
+## [2026-06-25 19:30] — Publicado no GitHub (continuar noutro PC)
+
+### Estado ao encerrar
+- Commit `7eae4a7` pushed para `origin/main` (mrhenrike/WordListsForHacking)
+- Ver superprojeto `HANDOFF.md` entrada `[2026-06-25 19:30]` para bootstrap completo no outro PC
+
+### Proximo passo imediato
+- Pipeline Melissa full + validar 3 known_targets
+- Fase 4: kwalk_gen, web_scraper cewler parity
+
