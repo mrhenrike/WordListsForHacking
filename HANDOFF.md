@@ -179,3 +179,19 @@
 - Pipeline Melissa full + validar 3 known_targets
 - Fase 4: kwalk_gen, web_scraper cewler parity
 
+
+---
+
+## [2026-08-13 16:40] -- Authorship cleanup + smoke tests
+
+### Estado ao encerrar
+- Trailers Cursor/Made-with removidos do historico main (force-with-lease)
+- `.mailmap` sem remapeamento Cursor
+- Hook `.githooks/commit-msg` ativo
+- `tests/test_basic.py` (import wfh + wfh_modules) passando
+- Badges README alinhados a 2.7.2
+- Tip: `0b7666c`
+
+### Paths importantes
+- Windows: `D:\Projetos-SafeLabs\submodules\Uniao-Geek\WordListsForHacking`
+- Linux: `/mnt/predator/Projetos-SafeLabs/submodules/Uniao-Geek/WordListsForHacking`
