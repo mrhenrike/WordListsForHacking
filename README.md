@@ -3,7 +3,7 @@
 <p align="center">
   <img src="https://img.shields.io/github/stars/mrhenrike/WordListsForHacking?style=flat-square" alt="GitHub Stars">
   <img src="https://img.shields.io/github/license/mrhenrike/WordListsForHacking?style=flat-square" alt="License">
-  <img src="https://img.shields.io/badge/version-2.7.0-blue?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-2.7.2-blue?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/python-3.8%2B-blue?style=flat-square&logo=python&logoColor=white" alt="Python 3.8+">
   <img src="https://img.shields.io/pypi/v/wfh-wordlist?style=flat-square&logo=pypi&logoColor=white&color=green" alt="PyPI">
 </p>
